@@ -1,0 +1,27 @@
+{
+    "name": "street-connect-pro",
+    "version": "3.0.0",
+    "description": "Réseau social street workout avec shop et AI coach",
+    "private": true,
+    "scripts": {
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "lint": "next lint"
+    },
+    "dependencies": {
+        "@supabase/supabase-js": "^2.89.0",
+        "leaflet": "^1.9.4",
+        "lucide-react": "^0.294.0",
+        "next": "14.0.4",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "react-leaflet": "^4.2.1",
+        "recharts": "^2.10.3"
+    },
+    "devDependencies": {
+        "autoprefixer": "^10.0.1",
+        "postcss": "^8",
+        "tailwindcss": "^3.3.0"
+    }
+}

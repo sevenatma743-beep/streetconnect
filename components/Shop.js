@@ -1,0 +1,518 @@
+'use client'
+import { useState, useEffect } from 'react'
+import { ShoppingCart, Heart, Trash2, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase'
+
+export default function Shop() {
+  const { user } = useAuth()
+  const [selectedCategory, setSelectedCategory] = useState('Tous')
+  const [products, setProducts] = useState([])
+  const [favorites, setFavorites] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showAddProduct, setShowAddProduct] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [newProduct, setNewProduct] = useState({
+    name: '',
+    description: '',
+    price: '',
+    category: 'Équipement',
+    affiliate_url: ''
+  })
+  const [selectedImages, setSelectedImages] = useState([])
+  const [imagePreviews, setImagePreviews] = useState([])
+  const [productImageIndexes, setProductImageIndexes] = useState({})
+
+  useEffect(() => {
+    loadProducts()
+    if (user) loadFavorites()
+  }, [user])
+
+  async function loadProducts() {
+    try {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('created_at', { ascending: false })
+      
+      if (error) throw error
+      setProducts(data || [])
+    } catch (e) {
+      console.error('Erreur chargement produits:', e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function loadFavorites() {
+    try {
+      const { data, error } = await supabase
+        .from('favorites')
+        .select('product_id')
+        .eq('user_id', user.id)
+      
+      if (error) throw error
+      setFavorites((data || []).map(f => f.product_id))
+    } catch (e) {
+      console.error('Erreur chargement favoris:', e)
+    }
+  }
+
+  async function toggleFavorite(productId) {
+    if (!user) return alert('Connecte-toi pour ajouter des favoris !')
+    
+    try {
+      const isFavorite = favorites.includes(productId)
+      
+      if (isFavorite) {
+        const { error } = await supabase
+          .from('favorites')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('product_id', productId)
+        
+        if (error) throw error
+        setFavorites(favorites.filter(id => id !== productId))
+      } else {
+        const { error } = await supabase
+          .from('favorites')
+          .insert({ user_id: user.id, product_id: productId })
+        
+        if (error) throw error
+        setFavorites([...favorites, productId])
+      }
+    } catch (e) {
+      console.error('Erreur toggle favori:', e)
+    }
+  }
+
+  function handleImageSelect(e) {
+    const files = Array.from(e.target.files).slice(0, 3) // Max 3 images
+    setSelectedImages(files)
+    
+    // Créer previews
+    const previews = files.map(file => URL.createObjectURL(file))
+    setImagePreviews(previews)
+  }
+
+  function removeImage(index) {
+    setSelectedImages(prev => prev.filter((_, i) => i !== index))
+    setImagePreviews(prev => prev.filter((_, i) => i !== index))
+  }
+
+  async function uploadImages() {
+    if (selectedImages.length === 0) return []
+    
+    const uploadedUrls = []
+    
+    for (const file of selectedImages) {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
+      
+      const { data, error } = await supabase.storage
+        .from('product-images')
+        .upload(fileName, file, { upsert: true })
+      
+      if (error) throw error
+      
+      const { data: { publicUrl } } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(fileName)
+      
+      uploadedUrls.push(publicUrl)
+    }
+    
+    return uploadedUrls
+  }
+
+  async function handleAddProduct(e) {
+    e.preventDefault()
+    if (!user) return alert('Connecte-toi pour vendre !')
+    
+    try {
+      setUploading(true)
+      
+      // Upload images
+      const imageUrls = await uploadImages()
+      
+      const { error } = await supabase
+        .from('products')
+        .insert({
+          name: newProduct.name,
+          description: newProduct.description,
+          price: parseFloat(newProduct.price),
+          category: newProduct.category,
+          images: imageUrls.length > 0 ? imageUrls : ['https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=400&fit=crop'],
+          image_url: imageUrls[0] || 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=400&fit=crop',
+          affiliate_url: newProduct.affiliate_url || '#',
+          user_id: user.id
+        })
+      
+      if (error) throw error
+      
+      alert('✅ Produit ajouté avec succès !')
+      setShowAddProduct(false)
+      setNewProduct({
+        name: '',
+        description: '',
+        price: '',
+        category: 'Équipement',
+        affiliate_url: ''
+      })
+      setSelectedImages([])
+      setImagePreviews([])
+      await loadProducts()
+    } catch (e) {
+      console.error('Erreur ajout produit:', e)
+      alert('❌ Erreur lors de l\'ajout du produit')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleDeleteProduct(productId) {
+    if (!confirm('Supprimer ce produit ?')) return
+    
+    try {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId)
+      
+      if (error) throw error
+      
+      alert('✅ Produit supprimé')
+      await loadProducts()
+    } catch (e) {
+      console.error('Erreur suppression produit:', e)
+      alert('❌ Erreur lors de la suppression')
+    }
+  }
+
+  const categories = ['Tous', ...new Set(products.map(p => p.category))]
+  const filteredProducts = selectedCategory === 'Tous' 
+    ? products 
+    : products.filter(p => p.category === selectedCategory)
+
+  return (
+    <>
+      {/* Modal Ajouter Produit */}
+      {showAddProduct && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-street-800 border border-street-700 rounded-2xl p-6 max-w-md w-full my-8">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-2xl font-bold text-white">Vendre un produit</h3>
+              <button
+                onClick={() => setShowAddProduct(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleAddProduct} className="space-y-4">
+              {/* Photos */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Photos (max 3)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageSelect}
+                  className="hidden"
+                  id="image-upload"
+                />
+                <label
+                  htmlFor="image-upload"
+                  className="block w-full p-4 bg-street-900 border-2 border-dashed border-street-700 rounded-lg text-center cursor-pointer hover:border-street-accent transition"
+                >
+                  <span className="text-gray-400">📷 Ajouter des photos</span>
+                </label>
+                
+                {/* Previews */}
+                {imagePreviews.length > 0 && (
+                  <div className="flex gap-2 mt-2 overflow-x-auto">
+                    {imagePreviews.map((preview, i) => (
+                      <div key={i} className="relative flex-shrink-0">
+                        <img src={preview} alt={`Preview ${i+1}`} className="w-20 h-20 object-cover rounded-lg" />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(i)}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Nom du produit *</label>
+                <input
+                  type="text"
+                  required
+                  value={newProduct.name}
+                  onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
+                  placeholder="Ex: Barre de traction murale"
+                  className="w-full p-3 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Description *</label>
+                <textarea
+                  required
+                  value={newProduct.description}
+                  onChange={(e) => setNewProduct({...newProduct, description: e.target.value})}
+                  placeholder="Décris ton équipement..."
+                  className="w-full p-3 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent resize-none"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Prix (€) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={newProduct.price}
+                  onChange={(e) => setNewProduct({...newProduct, price: e.target.value})}
+                  placeholder="Ex: 49.99"
+                  className="w-full p-3 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Catégorie *</label>
+                <select
+                  value={newProduct.category}
+                  onChange={(e) => setNewProduct({...newProduct, category: e.target.value})}
+                  className="w-full p-3 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
+                >
+                  <option>Équipement</option>
+                  <option>Accessoires</option>
+                  <option>Nutrition</option>
+                  <option>Vêtements</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Contact (téléphone, email...)</label>
+                <input
+                  type="text"
+                  value={newProduct.affiliate_url}
+                  onChange={(e) => setNewProduct({...newProduct, affiliate_url: e.target.value})}
+                  placeholder="06 12 34 56 78"
+                  className="w-full p-3 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={uploading}
+                  className="flex-1 bg-street-accent text-street-900 font-bold py-3 rounded-lg hover:bg-street-accentHover transition disabled:opacity-50"
+                >
+                  {uploading ? 'Publication...' : 'Publier'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddProduct(false)}
+                  className="flex-1 bg-street-700 text-white py-3 rounded-lg hover:bg-street-600 transition"
+                >
+                  Annuler
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    <div className="p-4 pb-20">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="font-display font-bold text-3xl text-white">SHOP</h2>
+          <p className="text-sm text-gray-400 mt-1">Équipe-toi comme un pro</p>
+        </div>
+      </div>
+
+      {/* Banner vente - EN HAUT */}
+      <div className="mb-6 bg-gradient-to-r from-street-800 to-street-700 rounded-2xl p-4 border border-street-accent/30 flex items-center justify-between">
+        <div>
+          <p className="text-white font-bold text-base mb-0.5">
+            Vends ton matos ou trouve des bonnes affaires
+          </p>
+          <p className="text-xs text-gray-400">
+            100% gratuit • Aucune commission
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAddProduct(true)}
+          className="bg-street-accent text-street-900 font-bold px-5 py-2.5 rounded-lg hover:bg-street-accentHover transition whitespace-nowrap"
+        >
+          ➕ Vendre
+        </button>
+      </div>
+
+      {/* Filtres */}
+      <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6">
+        {categories.map(cat => (
+          <button
+            key={cat}
+            onClick={() => setSelectedCategory(cat)}
+            className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
+              selectedCategory === cat 
+                ? 'bg-street-accent text-street-900 shadow-lg' 
+                : 'bg-street-800 text-gray-400 border border-street-700 hover:border-street-accent'
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Grille produits */}
+      {loading ? (
+        <div className="text-center text-gray-400 py-12">Chargement des produits...</div>
+      ) : filteredProducts.length === 0 ? (
+        <div className="text-center text-gray-500 py-12">Aucun produit dans cette catégorie</div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {filteredProducts.map(product => {
+            const isFavorite = favorites.includes(product.id)
+            const isOwner = user && product.user_id === user.id
+            const productImages = product.images || [product.image_url]
+            const currentImageIndex = productImageIndexes[product.id] || 0
+            
+            return (
+              <div 
+                key={product.id} 
+                className="bg-street-800 rounded-2xl p-4 border border-street-700 hover:border-street-accent transition-all group relative"
+              >
+                {/* Boutons actions */}
+                <div className="absolute top-2 right-2 z-10 flex gap-2">
+                  {user && (
+                    <button
+                      onClick={() => toggleFavorite(product.id)}
+                      className="bg-street-900/80 backdrop-blur-sm p-2 rounded-full hover:scale-110 transition-transform"
+                    >
+                      <Heart 
+                        size={18} 
+                        className={isFavorite ? 'fill-red-500 text-red-500' : 'text-gray-400'} 
+                      />
+                    </button>
+                  )}
+                  {isOwner && (
+                    <button
+                      onClick={() => handleDeleteProduct(product.id)}
+                      className="bg-red-500/80 backdrop-blur-sm p-2 rounded-full hover:scale-110 transition-transform"
+                    >
+                      <Trash2 size={18} className="text-white" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Image produit avec carrousel */}
+                <div className="aspect-square rounded-xl bg-street-900 overflow-hidden mb-3 relative">
+                  <img 
+                    src={productImages[currentImageIndex]} 
+                    alt={product.name} 
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" 
+                  />
+                  
+                  {/* Navigation carrousel si plusieurs images */}
+                  {productImages.length > 1 && (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setProductImageIndexes(prev => ({
+                            ...prev,
+                            [product.id]: (prev[product.id] || 0) === 0 ? productImages.length - 1 : (prev[product.id] || 0) - 1
+                          }))
+                        }}
+                        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 p-1 rounded-full hover:bg-black/70 transition"
+                      >
+                        <ChevronLeft size={16} className="text-white" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setProductImageIndexes(prev => ({
+                            ...prev,
+                            [product.id]: (prev[product.id] || 0) === productImages.length - 1 ? 0 : (prev[product.id] || 0) + 1
+                          }))
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 p-1 rounded-full hover:bg-black/70 transition"
+                      >
+                        <ChevronRight size={16} className="text-white" />
+                      </button>
+                      
+                      {/* Indicateurs */}
+                      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+                        {productImages.map((_, i) => (
+                          <div
+                            key={i}
+                            className={`w-1.5 h-1.5 rounded-full ${i === currentImageIndex ? 'bg-white' : 'bg-white/40'}`}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Catégorie */}
+                <span className="text-[10px] font-bold text-street-accent uppercase tracking-wider">
+                  {product.category}
+                </span>
+
+                {/* Nom produit */}
+                <h3 className="font-bold text-sm text-white mt-1 line-clamp-2 min-h-[2.5rem]">
+                  {product.name}
+                </h3>
+
+                {/* Description */}
+                <p className="text-xs text-gray-400 line-clamp-2 mt-2 h-8">
+                  {product.description}
+                </p>
+
+                {/* Prix et bouton */}
+                <div className="mt-4 flex items-center justify-between">
+                  <span className="text-lg font-black text-white">
+                    {product.price.toFixed(2)}€
+                  </span>
+                  {product.affiliate_url && product.affiliate_url !== '#' ? (
+                    <a 
+                      href={
+                        product.affiliate_url.startsWith('http') 
+                          ? product.affiliate_url 
+                          : product.affiliate_url.includes('@')
+                          ? `mailto:${product.affiliate_url}`
+                          : `tel:${product.affiliate_url.replace(/\s/g, '')}`
+                      }
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="bg-street-accent text-street-900 w-9 h-9 rounded-lg flex items-center justify-center hover:scale-110 active:scale-90 transition-all shadow-lg"
+                      title={product.affiliate_url}
+                    >
+                      <ShoppingCart size={20} strokeWidth={3} />
+                    </a>
+                  ) : (
+                    <div className="bg-gray-700 w-9 h-9 rounded-lg flex items-center justify-center cursor-not-allowed opacity-50">
+                      <ShoppingCart size={20} strokeWidth={3} className="text-gray-500" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+    </>
+  )
+}
