@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 
 export default function AuthPage() {
-  const [mode, setMode] = useState('login') // 'login' ou 'signup'
+  const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
@@ -20,11 +20,14 @@ export default function AuthPage() {
 
     try {
       if (mode === 'login') {
+        // CONNEXION
         const { data, error } = await signIn(email, password)
         if (error) throw error
+        
+        // Redirection immédiate
         router.push('/')
       } else {
-        // Validation
+        // INSCRIPTION
         if (!username || username.length < 3) {
           throw new Error('Le nom d\'utilisateur doit contenir au moins 3 caractères')
         }
@@ -35,15 +38,25 @@ export default function AuthPage() {
         const { data, error } = await signUp(email, password, username)
         if (error) throw error
         
-        // Message de succès
-        setError('Compte créé ! Vérifiez votre email pour confirmer votre compte.')
-        setTimeout(() => {
-          setMode('login')
-          setError('')
-        }, 3000)
+        // Vérifier si l'email doit être confirmé
+        if (data?.user && !data.session) {
+          // Email confirmation requise
+          setError('✅ Compte créé ! Vérifiez votre email pour confirmer votre compte.')
+          setTimeout(() => {
+            setMode('login')
+            setError('')
+          }, 5000)
+        } else {
+          // Connexion automatique (si confirm email désactivé)
+          setError('✅ Compte créé avec succès !')
+          setTimeout(() => {
+            router.push('/')
+          }, 1500)
+        }
       }
     } catch (err) {
-      setError(err.message)
+      console.error('Erreur auth:', err)
+      setError(err.message || 'Une erreur est survenue')
     } finally {
       setLoading(false)
     }
@@ -145,10 +158,10 @@ export default function AuthPage() {
               )}
             </div>
 
-            {/* Error Message */}
+            {/* Error/Success Message */}
             {error && (
               <div className={`p-3 rounded-lg text-sm ${
-                error.includes('créé') || error.includes('succès')
+                error.includes('✅') || error.includes('succès')
                   ? 'bg-green-500/10 text-green-400 border border-green-500/20'
                   : 'bg-red-500/10 text-red-400 border border-red-500/20'
               }`}>
