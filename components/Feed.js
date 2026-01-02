@@ -9,10 +9,13 @@ import {
   getComments,
   addComment,
   deletePost,
-  deleteComment
+  deleteComment,
+  followUser,
+  unfollowUser,
+  isFollowing
 } from '../lib/supabase'
 
-export default function Feed() {
+export default function Feed({ onUserClick }) {
   const { user } = useAuth()
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -28,10 +31,30 @@ export default function Feed() {
   const [comments, setComments] = useState({})
   const [newComment, setNewComment] = useState({})
 
+  // États pour Follow
+  const [followingStatus, setFollowingStatus] = useState({})
+
   // Charger les posts au montage
   useEffect(() => {
     loadPosts()
   }, [user])
+
+  // Vérifier le statut follow pour chaque post
+  useEffect(() => {
+    if (user && posts.length > 0) {
+      checkAllFollowStatus()
+    }
+  }, [user, posts])
+
+  async function checkAllFollowStatus() {
+    const status = {}
+    for (const post of posts) {
+      if (post.user_id !== user.id) {
+        status[post.user_id] = await isFollowing(user.id, post.user_id)
+      }
+    }
+    setFollowingStatus(status)
+  }
 
   async function loadPosts() {
     try {
@@ -47,6 +70,22 @@ export default function Feed() {
     }
   }
 
+  async function handleFollow(userId) {
+    if (!user) return
+    
+    const isCurrentlyFollowing = followingStatus[userId]
+    const success = isCurrentlyFollowing
+      ? await unfollowUser(userId, user.id)
+      : await followUser(userId, user.id)
+    
+    if (success) {
+      setFollowingStatus(prev => ({
+        ...prev,
+        [userId]: !isCurrentlyFollowing
+      }))
+    }
+  }
+
   // Créer un post
   async function handleCreatePost(e) {
     e.preventDefault()
@@ -59,9 +98,8 @@ export default function Feed() {
       setPosting(true)
       setError(null)
       let mediaUrl = null
-      let postType = 'TEXT' // Par défaut : TEXT
+      let postType = 'TEXT'
 
-      // Upload média si présent
       if (newPostMedia) {
         mediaUrl = await uploadPostMedia(newPostMedia, user.id)
         if (!mediaUrl) {
@@ -69,11 +107,9 @@ export default function Feed() {
           setPosting(false)
           return
         }
-        // Détection du type en MAJUSCULES (comme en DB)
         postType = newPostMedia.type.startsWith('image/') ? 'IMAGE' : 'VIDEO'
       }
 
-      // Créer le post
       const postData = {
         user_id: user.id,
         caption: newPostCaption.trim() || null,
@@ -84,15 +120,11 @@ export default function Feed() {
       const newPost = await createPost(postData)
       
       if (newPost) {
-        // Recharger les posts
         await loadPosts()
-        
-        // Reset form
         setNewPostCaption('')
         setNewPostMedia(null)
         setError(null)
         
-        // Reset file input
         const fileInput = document.querySelector('input[type="file"]')
         if (fileInput) fileInput.value = ''
       } else {
@@ -106,7 +138,6 @@ export default function Feed() {
     }
   }
 
-  // Liker/unliker un post
   async function handleLike(postId, isLiked) {
     if (!user) return
 
@@ -116,7 +147,6 @@ export default function Feed() {
         : await likePost(postId, user.id)
 
       if (success) {
-        // Mise à jour optimiste de l'UI
         setPosts(posts.map(post => {
           if (post.id === postId) {
             return {
@@ -133,7 +163,6 @@ export default function Feed() {
     }
   }
 
-  // Charger les commentaires d'un post
   async function loadComments(postId) {
     try {
       const data = await getComments(postId)
@@ -143,7 +172,6 @@ export default function Feed() {
     }
   }
 
-  // Toggle affichage commentaires
   function toggleComments(postId) {
     const isExpanded = expandedComments[postId]
     
@@ -157,7 +185,6 @@ export default function Feed() {
     }))
   }
 
-  // Ajouter un commentaire
   async function handleAddComment(postId) {
     if (!user || !newComment[postId]?.trim()) return
 
@@ -171,13 +198,11 @@ export default function Feed() {
       const comment = await addComment(commentData)
       
       if (comment) {
-        // Ajouter le commentaire à la liste locale
         setComments(prev => ({
           ...prev,
           [postId]: [...(prev[postId] || []), comment]
         }))
 
-        // Mettre à jour le compteur
         setPosts(posts.map(post => {
           if (post.id === postId) {
             return {
@@ -188,7 +213,6 @@ export default function Feed() {
           return post
         }))
 
-        // Reset input
         setNewComment(prev => ({ ...prev, [postId]: '' }))
       }
     } catch (err) {
@@ -196,7 +220,6 @@ export default function Feed() {
     }
   }
 
-  // Supprimer un post
   async function handleDeletePost(postId) {
     if (!user) return
     
@@ -206,7 +229,6 @@ export default function Feed() {
       const success = await deletePost(postId, user.id)
       
       if (success) {
-        // Retirer le post de la liste
         setPosts(posts.filter(post => post.id !== postId))
       } else {
         alert('Impossible de supprimer ce post')
@@ -216,7 +238,6 @@ export default function Feed() {
     }
   }
 
-  // Supprimer un commentaire
   async function handleDeleteComment(commentId, postId, postOwnerId) {
     if (!user) return
     
@@ -226,13 +247,11 @@ export default function Feed() {
       const success = await deleteComment(commentId, user.id, postOwnerId)
       
       if (success) {
-        // Retirer le commentaire de la liste
         setComments(prev => ({
           ...prev,
           [postId]: (prev[postId] || []).filter(c => c.id !== commentId)
         }))
 
-        // Décrémenter le compteur
         setPosts(posts.map(post => {
           if (post.id === postId) {
             return {
@@ -250,7 +269,6 @@ export default function Feed() {
     }
   }
 
-  // UI
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -319,28 +337,56 @@ export default function Feed() {
             <div className="p-4 flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <img
-                  src={post.avatar_url || '/default-avatar.png'}
+                  src={post.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}
                   alt={post.username || 'Anonyme'}
-                  className="w-10 h-10 rounded-full border-2 border-street-accent"
+                  onClick={() => {
+                    console.log('🔵 Clic avatar - userId:', post.user_id, 'username:', post.username, 'onUserClick exists:', !!onUserClick)
+                    onUserClick && onUserClick(post.user_id)
+                  }}
+                  className="w-10 h-10 rounded-full border-2 border-street-accent cursor-pointer hover:opacity-80 transition"
                 />
                 <div>
-                  <div className="font-semibold text-white">{post.username || 'Anonyme'}</div>
+                  <div 
+                    onClick={() => {
+                      console.log('🔵 Clic username - userId:', post.user_id, 'username:', post.username, 'onUserClick exists:', !!onUserClick)
+                      onUserClick && onUserClick(post.user_id)
+                    }}
+                    className="font-semibold text-white cursor-pointer hover:text-street-accent transition"
+                  >
+                    {post.username || 'Anonyme'}
+                  </div>
                   <div className="text-xs text-gray-500">
                     {new Date(post.created_at).toLocaleDateString('fr-FR')}
                   </div>
                 </div>
               </div>
               
-              {/* Bouton supprimer (seulement si c'est mon post) */}
-              {user && post.user_id === user.id && (
-                <button
-                  onClick={() => handleDeletePost(post.id)}
-                  className="text-red-400 hover:text-red-300 text-sm font-semibold transition"
-                  title="Supprimer ce post"
-                >
-                  🗑️
-                </button>
-              )}
+              <div className="flex items-center space-x-2">
+                {/* Bouton Follow (seulement si ce n'est pas mon post) */}
+                {user && post.user_id !== user.id && (
+                  <button
+                    onClick={() => handleFollow(post.user_id)}
+                    className={`px-4 py-1 rounded-lg text-sm font-bold transition ${
+                      followingStatus[post.user_id]
+                        ? 'bg-street-700 text-white hover:bg-street-600'
+                        : 'bg-street-accent text-street-900 hover:bg-street-accentHover'
+                    }`}
+                  >
+                    {followingStatus[post.user_id] ? 'Suivi' : 'Suivre'}
+                  </button>
+                )}
+                
+                {/* Bouton supprimer (seulement si c'est mon post) */}
+                {user && post.user_id === user.id && (
+                  <button
+                    onClick={() => handleDeletePost(post.id)}
+                    className="text-red-400 hover:text-red-300 text-sm font-semibold transition"
+                    title="Supprimer ce post"
+                  >
+                    🗑️
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Media */}
@@ -395,14 +441,14 @@ export default function Feed() {
                 <div className="space-y-2 mt-3 max-h-64 overflow-y-auto">
                   {(comments[post.id] || []).map(comment => {
                     const canDelete = user && (
-                      comment.user_id === user.id || // Mon commentaire
-                      post.user_id === user.id // Mon post
+                      comment.user_id === user.id ||
+                      post.user_id === user.id
                     )
                     
                     return (
                       <div key={comment.id} className="flex space-x-2 text-sm">
                         <img
-                          src={comment.profiles?.avatar_url || '/default-avatar.png'}
+                          src={comment.profiles?.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}
                           alt={comment.profiles?.username || 'Anonyme'}
                           className="w-8 h-8 rounded-full border border-street-accent"
                         />

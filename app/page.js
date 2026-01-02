@@ -1,69 +1,53 @@
 'use client'
-
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useRouter } from 'next/navigation'
+import Layout from '../components/Layout'
 import Feed from '../components/Feed'
 import Profile from '../components/Profile'
-import Shop from '../components/Shop'
 import Spots from '../components/Spots'
-import Tracker from '../components/Tracker'
 import Challenges from '../components/Challenges'
+import Tracker from '../components/Tracker'
+import Shop from '../components/Shop'
 import Messages from '../components/Messages'
-import Layout from '../components/Layout'
 
 export default function HomePage() {
   const { user, loading } = useAuth()
+  const router = useRouter()
+  
   const [activeTab, setActiveTab] = useState('feed')
+  const [viewingUserId, setViewingUserId] = useState(null)
 
-  // Afficher un loader pendant la vérification de l'auth
+  // Redirection si pas connecté
+  if (!loading && !user) {
+    router.push('/auth')
+    return null
+  }
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Chargement...</p>
-        </div>
+      <div className="min-h-screen bg-street-900 flex items-center justify-center">
+        <div className="text-white">Chargement...</div>
       </div>
     )
   }
 
-  // Rediriger vers /auth si non connecté
-  if (!user) {
-    // Dans Next.js, utiliser router.push('/auth') ou window.location.href
-    // Pour l'instant, afficher un message
-    if (typeof window !== 'undefined') {
-      window.location.href = '/auth'
-    }
-    return null
-  }
-
-  // Fonction pour rendre le composant actif
-  function renderActiveComponent() {
-    switch (activeTab) {
-      case 'feed':
-        return <Feed />
-      case 'profile':
-        return <Profile />
-      case 'shop':
-        return <Shop />
-      case 'spots':
-        return <Spots />
-      case 'tracker':
-        return <Tracker />
-      case 'challenges':
-        return <Challenges />
-      case 'messages':
-        return <Messages />
-      default:
-        return <Feed />
-    }
+  // Fonction pour aller sur un profil
+  function handleUserClick(userId) {
+    console.log('🟢 handleUserClick appelé avec:', userId)
+    setViewingUserId(userId)
+    setActiveTab('profile')
   }
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      <div className="min-h-screen bg-gray-50">
-        {renderActiveComponent()}
-      </div>
+      {activeTab === 'feed' && <Feed onUserClick={handleUserClick} />}
+      {activeTab === 'spots' && <Spots />}
+      {activeTab === 'challenges' && <Challenges />}
+      {activeTab === 'tracker' && <Tracker />}
+      {activeTab === 'shop' && <Shop />}
+      {activeTab === 'messages' && <Messages />}
+      {activeTab === 'profile' && <Profile viewUserId={viewingUserId} />}
     </Layout>
   )
 }

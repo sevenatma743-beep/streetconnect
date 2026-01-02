@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { getPosts, getProfile, updateProfile, uploadAvatar } from '../lib/supabase'
+import { getPosts, getProfile, updateProfile, uploadAvatar, followUser, unfollowUser, isFollowing } from '../lib/supabase'
 
-export default function Profile() {
+export default function Profile({ viewUserId }) {
   const { user } = useAuth()
+  // Si viewUserId est fourni, on regarde ce profil, sinon on regarde le profil de l'user connecté
+  const profileUserId = viewUserId || user?.id
+  
   const [profile, setProfile] = useState(null)
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -16,18 +19,49 @@ export default function Profile() {
   const [newAvatar, setNewAvatar] = useState(null)
   const [updating, setUpdating] = useState(false)
 
+  // États pour Follow
+  const [isFollowingUser, setIsFollowingUser] = useState(false)
+  const [followLoading, setFollowLoading] = useState(false)
+
   useEffect(() => {
-    if (user) {
+    if (profileUserId) {
       loadProfile()
       loadUserPosts()
     }
-  }, [user])
+  }, [profileUserId])
+
+  // Vérifier le statut follow
+  useEffect(() => {
+    if (user && profile && user.id !== profile.id) {
+      checkFollowStatus()
+    }
+  }, [user, profile])
+
+  async function checkFollowStatus() {
+    const following = await isFollowing(user.id, profile.id)
+    setIsFollowingUser(following)
+  }
+
+  async function handleFollow() {
+    if (!user || !profile) return
+    
+    setFollowLoading(true)
+    const success = isFollowingUser 
+      ? await unfollowUser(profile.id, user.id)
+      : await followUser(profile.id, user.id)
+    
+    if (success) {
+      setIsFollowingUser(!isFollowingUser)
+      loadProfile()
+    }
+    setFollowLoading(false)
+  }
 
   async function loadProfile() {
     try {
       setLoading(true)
       setError(null)
-      const data = await getProfile(user.id)
+      const data = await getProfile(profileUserId)
       
       if (data) {
         setProfile(data)
@@ -46,7 +80,7 @@ export default function Profile() {
 
   async function loadUserPosts() {
     try {
-      const data = await getPosts(user.id, user.id)
+      const data = await getPosts(profileUserId, user?.id)
       setPosts(data)
     } catch (err) {
       console.error('Erreur chargement posts utilisateur:', err)
@@ -62,7 +96,6 @@ export default function Profile() {
       
       let avatarUrl = profile.avatar_url
 
-      // Upload avatar si un nouveau fichier est sélectionné
       if (newAvatar) {
         const uploadedUrl = await uploadAvatar(newAvatar, user.id)
         if (uploadedUrl) {
@@ -74,7 +107,6 @@ export default function Profile() {
         }
       }
 
-      // Préparer les mises à jour
       const updates = {
         username: editedUsername.trim() || profile.username,
         bio: editedBio.trim() || null,
@@ -129,6 +161,9 @@ export default function Profile() {
     )
   }
 
+  // C'est mon profil ?
+  const isMyProfile = user && profile && user.id === profile.id
+
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-6 pb-24">
       {/* Header profil */}
@@ -140,12 +175,12 @@ export default function Profile() {
               src={
                 newAvatar 
                   ? URL.createObjectURL(newAvatar)
-                  : profile.avatar_url || '/default-avatar.png'
+                  : profile.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'
               }
               alt={profile.username}
               className="w-24 h-24 rounded-full object-cover border-4 border-street-accent shadow-lg"
             />
-            {isEditing && (
+            {isMyProfile && isEditing && (
               <label className="cursor-pointer text-xs text-street-accent hover:text-street-accentHover font-semibold transition">
                 Changer photo
                 <input
@@ -160,9 +195,8 @@ export default function Profile() {
 
           {/* Infos */}
           <div className="flex-1 space-y-3">
-            {isEditing ? (
+            {isMyProfile && isEditing ? (
               <div className="space-y-3">
-                {/* Édition nom */}
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">Nom d'utilisateur</label>
                   <input
@@ -174,7 +208,6 @@ export default function Profile() {
                   />
                 </div>
 
-                {/* Édition bio */}
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">Bio</label>
                   <textarea
@@ -186,7 +219,6 @@ export default function Profile() {
                   />
                 </div>
 
-                {/* Boutons */}
                 <div className="flex space-x-2">
                   <button
                     onClick={handleUpdateProfile}
@@ -231,15 +263,31 @@ export default function Profile() {
                   </div>
                 </div>
 
-                {/* Bio */}
+                {/* Bio + Bouton */}
                 <div className="space-y-2">
                   <p className="text-sm text-gray-300">{profile.bio || 'Aucune bio'}</p>
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="text-sm text-street-accent hover:text-street-accentHover font-semibold transition"
-                  >
-                    Modifier le profil
-                  </button>
+                  
+                  {/* BOUTON MODIFIER OU FOLLOW */}
+                  {isMyProfile ? (
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      className="text-sm text-street-accent hover:text-street-accentHover font-semibold transition"
+                    >
+                      Modifier le profil
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleFollow}
+                      disabled={followLoading}
+                      className={`px-6 py-2 rounded-lg font-bold transition ${
+                        isFollowingUser
+                          ? 'bg-street-700 text-white hover:bg-street-600'
+                          : 'bg-street-accent text-street-900 hover:bg-street-accentHover'
+                      }`}
+                    >
+                      {followLoading ? '...' : isFollowingUser ? 'Ne plus suivre' : 'Suivre'}
+                    </button>
+                  )}
                 </div>
               </>
             )}
@@ -291,7 +339,6 @@ export default function Profile() {
                   </div>
                 )}
 
-                {/* Overlay avec stats */}
                 <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition flex items-center justify-center space-x-4 opacity-0 hover:opacity-100">
                   <div className="text-white flex items-center space-x-1">
                     <span>❤️</span>
