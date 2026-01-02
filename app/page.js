@@ -8,6 +8,7 @@ import Shop from '../components/Shop'
 import Spots from '../components/Spots'
 import Tracker from '../components/Tracker'
 import Challenges from '../components/Challenges'
+import Messages from '../components/Messages'
 import Layout from '../components/Layout'
 
 export default function HomePage() {
@@ -51,6 +52,8 @@ export default function HomePage() {
         return <Tracker />
       case 'challenges':
         return <Challenges />
+      case 'messages':
+        return <Messages />
       default:
         return <Feed />
     }
