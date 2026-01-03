@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { getPosts, getProfile, updateProfile, uploadAvatar, followUser, unfollowUser, isFollowing } from '../lib/supabase'
+import PostModal from './PostModal'
 
 export default function Profile({ viewUserId }) {
   const { user } = useAuth()
-  // Si viewUserId est fourni, on regarde ce profil, sinon on regarde le profil de l'user connecté
   const profileUserId = viewUserId || user?.id
   
   const [profile, setProfile] = useState(null)
@@ -23,6 +23,9 @@ export default function Profile({ viewUserId }) {
   const [isFollowingUser, setIsFollowingUser] = useState(false)
   const [followLoading, setFollowLoading] = useState(false)
 
+  // États pour Modal
+  const [selectedPostIndex, setSelectedPostIndex] = useState(null)
+
   useEffect(() => {
     if (profileUserId) {
       loadProfile()
@@ -30,7 +33,6 @@ export default function Profile({ viewUserId }) {
     }
   }, [profileUserId])
 
-  // Vérifier le statut follow
   useEffect(() => {
     if (user && profile && user.id !== profile.id) {
       checkFollowStatus()
@@ -131,6 +133,27 @@ export default function Profile({ viewUserId }) {
     }
   }
 
+  function handlePostClick(index) {
+    setSelectedPostIndex(index)
+  }
+
+  function handleNextPost() {
+    if (selectedPostIndex < posts.length - 1) {
+      setSelectedPostIndex(selectedPostIndex + 1)
+    }
+  }
+
+  function handlePrevPost() {
+    if (selectedPostIndex > 0) {
+      setSelectedPostIndex(selectedPostIndex - 1)
+    }
+  }
+
+  function handleDeletePost(postId) {
+    setPosts(posts.filter(p => p.id !== postId))
+    setSelectedPostIndex(null)
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -161,7 +184,6 @@ export default function Profile({ viewUserId }) {
     )
   }
 
-  // C'est mon profil ?
   const isMyProfile = user && profile && user.id === profile.id
 
   return (
@@ -267,7 +289,6 @@ export default function Profile({ viewUserId }) {
                 <div className="space-y-2">
                   <p className="text-sm text-gray-300">{profile.bio || 'Aucune bio'}</p>
                   
-                  {/* BOUTON MODIFIER OU FOLLOW */}
                   {isMyProfile ? (
                     <button
                       onClick={() => setIsEditing(true)}
@@ -307,9 +328,10 @@ export default function Profile({ viewUserId }) {
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-1">
-            {posts.map(post => (
+            {posts.map((post, index) => (
               <div
                 key={post.id}
+                onClick={() => handlePostClick(index)}
                 className="aspect-square bg-street-900 relative overflow-hidden cursor-pointer hover:opacity-75 transition border border-street-700"
               >
                 {post.media_url ? (
@@ -325,15 +347,15 @@ export default function Profile({ viewUserId }) {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center p-4 bg-gray-100">
-                      <p className="text-sm text-gray-600 line-clamp-3 text-center">
+                    <div className="w-full h-full flex items-center justify-center p-4 bg-street-800">
+                      <p className="text-sm text-gray-300 line-clamp-3 text-center">
                         {post.caption}
                       </p>
                     </div>
                   )
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center p-4 bg-gray-100">
-                    <p className="text-sm text-gray-600 line-clamp-3 text-center">
+                  <div className="w-full h-full flex items-center justify-center p-4 bg-street-800">
+                    <p className="text-sm text-gray-300 line-clamp-3 text-center">
                       {post.caption || 'Post sans contenu'}
                     </p>
                   </div>
@@ -354,6 +376,15 @@ export default function Profile({ viewUserId }) {
           </div>
         )}
       </div>
+
+      {/* Modal Post */}
+      {selectedPostIndex !== null && (
+        <PostModal
+  posts={posts}
+  initialIndex={selectedPostIndex}
+  onClose={() => setSelectedPostIndex(null)}
+  onDelete={handleDeletePost}
+/>  )}
     </div>
   )
 }
