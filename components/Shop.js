@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { ShoppingCart, Heart, Trash2, ChevronLeft, ChevronRight, X, ExternalLink, Filter } from 'lucide-react'
+import { ShoppingCart, Heart, Trash2, ChevronLeft, ChevronRight, ChevronDown, X, ExternalLink, Filter } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 
@@ -13,6 +13,8 @@ export default function Shop() {
   // Commun
   const [selectedCategory, setSelectedCategory] = useState('Tous')
   const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false)
   
   // Curation (Amazon)
   const [curatedProducts, setCuratedProducts] = useState([])
@@ -201,59 +203,75 @@ export default function Shop() {
         .from('products')
         .delete()
         .eq('id', productId)
+        .eq('user_id', user.id)
       
-      alert('✅ Produit supprimé')
       await loadMarketplaceProducts()
     } catch (e) {
       console.error('Erreur suppression:', e)
     }
   }
 
-  // Filtres
-  const curatedCategories = ['Tous', 'Barres de traction', 'Parallettes', 'Anneaux de gymnastique', 'Bandes de résistance', 'Accessoires']
-  const marketplaceCategories = ['Tous', ...new Set(marketplaceProducts.map(p => p.category))]
-  
-  const categories = activeTab === 'curation' ? curatedCategories : marketplaceCategories
+  function handleCategorySelect(category) {
+    setSelectedCategory(category)
+    setShowFilterDropdown(false)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Catégories dynamiques selon l'onglet actif
   const products = activeTab === 'curation' ? curatedProducts : marketplaceProducts
-  
-  const filteredProducts = selectedCategory === 'Tous' 
-    ? products 
-    : products.filter(p => p.category === selectedCategory)
+  const allCategories = [...new Set(products.map(p => p.category))].sort()
+  const categories = ['Tous', ...allCategories]
+
+  // Filtrage
+  const filteredProducts = products.filter(product => {
+    const matchCategory = selectedCategory === 'Tous' || product.category === selectedCategory
+    const matchSearch = !searchQuery || 
+      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (product.brand && product.brand.toLowerCase().includes(searchQuery.toLowerCase()))
+    
+    return matchCategory && matchSearch
+  })
 
   return (
     <>
-      {/* Modal Ajouter Produit (Marketplace) */}
+      {/* Modal Ajout Produit (Marketplace) */}
       {showAddProduct && (
-        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-street-800 border border-street-700 rounded-2xl p-6 max-w-md w-full my-8">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-2xl font-bold text-white">Vendre un produit</h3>
-              <button onClick={() => setShowAddProduct(false)} className="text-gray-400 hover:text-white">
+        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
+          <div className="bg-street-800 rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-black text-white">Vendre un article</h2>
+              <button
+                onClick={() => setShowAddProduct(false)}
+                className="text-gray-400 hover:text-white"
+              >
                 <X size={24} />
               </button>
             </div>
-            
+
             <form onSubmit={handleAddProduct} className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">Photos (max 3)</label>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  Photos (3 max)
+                </label>
                 <input
                   type="file"
                   accept="image/*"
                   multiple
                   onChange={handleImageSelect}
-                  className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-street-accent file:text-street-900 file:font-bold hover:file:bg-street-accentHover"
+                  className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-street-700 file:text-white hover:file:bg-street-600"
                 />
+                
                 {imagePreviews.length > 0 && (
-                  <div className="flex gap-2 mt-3">
+                  <div className="grid grid-cols-3 gap-2 mt-3">
                     {imagePreviews.map((preview, i) => (
-                      <div key={i} className="relative">
-                        <img src={preview} alt="" className="w-20 h-20 object-cover rounded-lg" />
+                      <div key={i} className="relative aspect-square rounded-lg overflow-hidden">
+                        <img src={preview} alt={`Preview ${i + 1}`} className="w-full h-full object-cover" />
                         <button
                           type="button"
                           onClick={() => removeImage(i)}
-                          className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1"
+                          className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
                         >
-                          <X size={14} className="text-white" />
+                          <X size={14} />
                         </button>
                       </div>
                     ))}
@@ -262,159 +280,216 @@ export default function Shop() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">Nom</label>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  Titre *
+                </label>
                 <input
                   type="text"
-                  required
                   value={newProduct.name}
                   onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
-                  className="w-full p-3 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
+                  className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
+                  required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">Description</label>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  Description *
+                </label>
                 <textarea
-                  required
                   value={newProduct.description}
                   onChange={(e) => setNewProduct({...newProduct, description: e.target.value})}
+                  className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent resize-none"
                   rows={3}
-                  className="w-full p-3 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent resize-none"
+                  required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">Prix (€)</label>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  Prix (€) *
+                </label>
                 <input
                   type="number"
                   step="0.01"
-                  required
                   value={newProduct.price}
                   onChange={(e) => setNewProduct({...newProduct, price: e.target.value})}
-                  className="w-full p-3 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
+                  className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
+                  required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">Catégorie</label>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  Catégorie *
+                </label>
                 <select
                   value={newProduct.category}
                   onChange={(e) => setNewProduct({...newProduct, category: e.target.value})}
-                  className="w-full p-3 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
+                  className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
                 >
                   <option>Équipement</option>
-                  <option>Accessoires</option>
                   <option>Vêtements</option>
+                  <option>Accessoires</option>
                   <option>Nutrition</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">Contact (email ou tel)</label>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  Contact (email, tél, ou lien)
+                </label>
                 <input
                   type="text"
                   value={newProduct.affiliate_url}
                   onChange={(e) => setNewProduct({...newProduct, affiliate_url: e.target.value})}
-                  placeholder="06 12 34 56 78"
-                  className="w-full p-3 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
+                  placeholder="contact@email.com ou 06..."
+                  className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
                 />
               </div>
 
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="submit"
-                  disabled={uploading}
-                  className="flex-1 bg-street-accent text-street-900 font-bold py-3 rounded-lg hover:bg-street-accentHover transition disabled:opacity-50"
-                >
-                  {uploading ? 'Publication...' : 'Publier'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAddProduct(false)}
-                  className="flex-1 bg-street-700 text-white py-3 rounded-lg hover:bg-street-600 transition"
-                >
-                  Annuler
-                </button>
-              </div>
+              <button
+                type="submit"
+                disabled={uploading}
+                className="w-full bg-street-accent text-street-900 font-bold py-3 rounded-lg hover:bg-street-accentHover disabled:opacity-50 transition"
+              >
+                {uploading ? 'Envoi...' : '✅ Publier'}
+              </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* Modal Produit Curé (Amazon) */}
+      {/* Modal Détail Produit Amazon */}
       {selectedCuratedProduct && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
-          onClick={() => setSelectedCuratedProduct(null)}
-        >
-          <div
-            className="bg-street-800 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="aspect-square bg-street-900 flex items-center justify-center">
-              <img
-                src={selectedCuratedProduct.image_url}
-                alt={selectedCuratedProduct.name}
-                className="w-full h-full object-contain"
-                onError={(e) => e.target.src = 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=600&h=600&fit=crop'}
-              />
+        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
+          <div className="bg-street-800 rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-black text-white">{selectedCuratedProduct.name}</h2>
+              <button
+                onClick={() => setSelectedCuratedProduct(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={24} />
+              </button>
             </div>
 
-            <div className="p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="text-xs text-street-accent font-semibold uppercase">
-                  {selectedCuratedProduct.category}
-                </div>
-                {selectedCuratedProduct.brand && (
-                  <div className="text-sm text-gray-400 font-semibold">
-                    {selectedCuratedProduct.brand}
-                  </div>
-                )}
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="aspect-square bg-street-900 rounded-xl overflow-hidden flex items-center justify-center">
+                <img
+                  src={selectedCuratedProduct.image_url}
+                  alt={selectedCuratedProduct.name}
+                  className="w-full h-full object-contain"
+                  onError={(e) => e.target.src = 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=400&fit=crop'}
+                />
               </div>
-              
-              <h2 className="text-2xl font-bold text-white">
-                {selectedCuratedProduct.name}
-              </h2>
 
-              <p className="text-gray-300 leading-relaxed">
-                {selectedCuratedProduct.description}
-              </p>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-street-accent font-semibold uppercase">
+                      {selectedCuratedProduct.category}
+                    </span>
+                    {selectedCuratedProduct.brand && (
+                      <span className="text-xs text-gray-500 font-medium">
+                        {selectedCuratedProduct.brand}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">
+                    {selectedCuratedProduct.name}
+                  </h3>
+                  <p className="text-gray-300 text-sm leading-relaxed">
+                    {selectedCuratedProduct.description}
+                  </p>
+                </div>
 
-              <div className="border-t border-street-700 pt-4 space-y-3">
-                {/* Prix indicatif */}
                 {selectedCuratedProduct.price && (
-                  <div className="bg-street-900 rounded-lg p-3 border border-street-700">
+                  <div className="bg-street-900 rounded-lg p-4">
                     <p className="text-xs text-gray-500 mb-1">Prix indicatif (peut varier)</p>
-                    <p className="text-2xl font-bold text-street-accent">
+                    <p className="text-2xl font-bold text-white">
                       {selectedCuratedProduct.price.toFixed(2)}€
                     </p>
                   </div>
                 )}
-                
-                <p className="text-xs text-gray-500">
-                  Voir prix actuel et conditions sur Amazon
-                </p>
-                <button
-                  onClick={() => window.open(selectedCuratedProduct.affiliate_url, '_blank')}
-                  className="w-full px-6 py-3 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover transition flex items-center justify-center space-x-2"
+
+                <a
+                  href={selectedCuratedProduct.affiliate_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full block text-center px-6 py-3 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover transition"
                 >
-                  <span>Voir sur Amazon</span>
-                  <ExternalLink size={20} />
-                </button>
+                  Voir prix actuel sur Amazon →
+                </a>
+
+                <p className="text-xs text-gray-500 text-center">
+                  En tant que Partenaire Amazon, StreetConnect réalise un bénéfice sur les achats remplissant les conditions requises
+                </p>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Main Content */}
-      <div className="p-4 pb-20">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="font-display font-bold text-3xl text-white">SHOP</h2>
-            <p className="text-sm text-gray-400 mt-1">
-              {activeTab === 'curation' ? 'Sélection équipement pro' : 'Marketplace communauté'}
-            </p>
+      {/* Contenu Principal */}
+      <div className="max-w-7xl mx-auto p-4 pb-24 space-y-6">
+        {/* Header - SHOP uniquement */}
+        <h1 className="font-display text-2xl font-bold text-street-accent">
+          SHOP
+        </h1>
+
+        {/* Recherche + Filtres */}
+        <div className="space-y-3 mb-6">
+          {/* Barre recherche */}
+          <div className="relative">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="🔍 Rechercher par nom ou marque..."
+              className="w-full px-4 py-3 bg-street-800 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent placeholder-gray-500"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          
+          {/* Bouton Filter uniquement */}
+          <div className="relative">
+            <button
+              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-street-800 border border-street-700 text-white rounded-lg hover:border-street-accent transition font-semibold"
+            >
+              <Filter size={16} />
+              <span className="text-sm">
+                {selectedCategory === 'Tous' ? 'Filtre' : selectedCategory}
+              </span>
+              <ChevronDown size={16} className={`transition-transform ${showFilterDropdown ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Catégories */}
+            {showFilterDropdown && (
+              <div className="absolute top-full left-0 mt-2 w-56 bg-street-800 border border-street-700 rounded-lg shadow-xl z-10 max-h-64 overflow-y-auto">
+                {categories.map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => handleCategorySelect(cat)}
+                    className={`w-full text-left px-4 py-2.5 text-sm transition ${
+                      selectedCategory === cat
+                        ? 'bg-street-accent text-street-900 font-bold'
+                        : 'text-white hover:bg-street-700'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -468,31 +543,35 @@ export default function Shop() {
           </div>
         )}
 
-        {/* Filtres */}
-        <div className="flex items-center space-x-2 overflow-x-auto pb-2 mb-6">
-          <Filter size={20} className="text-gray-400 flex-shrink-0" />
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${
-                selectedCategory === cat
-                  ? 'bg-street-accent text-street-900'
-                  : 'bg-street-800 text-gray-400 hover:bg-street-700'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-
         {/* Grille Produits */}
         {loading ? (
           <div className="text-center text-gray-400 py-12">Chargement...</div>
         ) : filteredProducts.length === 0 ? (
-          <div className="text-center text-gray-500 py-12">Aucun produit dans cette catégorie</div>
+          <div className="text-center py-12">
+            <p className="text-gray-500 mb-2">Aucun produit trouvé</p>
+            {(searchQuery || selectedCategory !== 'Tous') && (
+              <button
+                onClick={() => {
+                  setSearchQuery('')
+                  setSelectedCategory('Tous')
+                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                }}
+                className="text-street-accent hover:underline text-sm"
+              >
+                Réinitialiser les filtres
+              </button>
+            )}
+          </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <>
+            {/* Compteur résultats */}
+            {(searchQuery || selectedCategory !== 'Tous') && (
+              <div className="text-sm text-gray-400 mb-4">
+                {filteredProducts.length} produit{filteredProducts.length > 1 ? 's' : ''} trouvé{filteredProducts.length > 1 ? 's' : ''}
+              </div>
+            )}
+            
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {filteredProducts.map(product => {
               if (activeTab === 'curation') {
                 // CURATION (Amazon)
@@ -672,6 +751,7 @@ export default function Shop() {
               }
             })}
           </div>
+          </>
         )}
 
         {/* Disclaimer (Curation uniquement) */}

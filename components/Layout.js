@@ -49,7 +49,7 @@ export default function Layout({ activeTab, setActiveTab, children }) {
           <span className="text-street-accent">CONNECT</span>
         </h1>
         <div className="flex items-center gap-3">
-          {/* Icône message - AJOUT */}
+          {/* Icône message */}
           <button 
             onClick={() => setActiveTab('messages')}
             className="relative p-2 hover:bg-street-700 rounded-lg transition"
@@ -71,13 +71,19 @@ export default function Layout({ activeTab, setActiveTab, children }) {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
+      {/* Main Content - Added bottom padding for fixed nav */}
+      <main 
+        className="flex-1 overflow-y-auto" 
+        style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}
+      >
         {children}
       </main>
 
-      {/* Bottom Navigation */}
-      <nav className="bg-street-800 border-t border-street-700 px-2 py-2 flex items-center justify-around">
+      {/* Bottom Navigation - FIXED for mobile visibility */}
+      <nav 
+        className="fixed bottom-0 left-0 right-0 bg-street-800 border-t border-street-700 px-2 py-2 flex items-center justify-around z-50" 
+        style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
+      >
         {tabs.map((tab) => {
           const Icon = tab.icon
 

@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { X, Image as ImageIcon } from 'lucide-react'
 import {
   getPosts,
   createPost,
@@ -25,6 +26,12 @@ export default function Feed({ onUserClick }) {
   const [newPostCaption, setNewPostCaption] = useState('')
   const [newPostMedia, setNewPostMedia] = useState(null)
   const [posting, setPosting] = useState(false)
+  
+  // Modal composer (mobile uniquement)
+  const [showComposerModal, setShowComposerModal] = useState(false)
+  
+  // Ref pour input file
+  const fileInputRef = useRef(null)
 
   // États pour commentaires
   const [expandedComments, setExpandedComments] = useState({})
@@ -124,9 +131,9 @@ export default function Feed({ onUserClick }) {
         setNewPostCaption('')
         setNewPostMedia(null)
         setError(null)
+        setShowComposerModal(false)
         
-        const fileInput = document.querySelector('input[type="file"]')
-        if (fileInput) fileInput.value = ''
+        if (fileInputRef.current) fileInputRef.current.value = ''
       } else {
         setError('Erreur création post')
       }
@@ -235,13 +242,12 @@ export default function Feed({ onUserClick }) {
       }
     } catch (err) {
       console.error('Erreur suppression post:', err)
+      alert('Erreur lors de la suppression')
     }
   }
 
   async function handleDeleteComment(commentId, postId, postOwnerId) {
     if (!user) return
-    
-    if (!confirm('Supprimer ce commentaire ?')) return
 
     try {
       const success = await deleteComment(commentId, user.id, postOwnerId)
@@ -266,13 +272,14 @@ export default function Feed({ onUserClick }) {
       }
     } catch (err) {
       console.error('Erreur suppression commentaire:', err)
+      alert('Erreur lors de la suppression')
     }
   }
 
-  if (loading) {
+  if (loading && posts.length === 0) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="text-gray-500">Chargement des posts...</div>
+        <div className="text-white">Chargement...</div>
       </div>
     )
   }
@@ -292,10 +299,43 @@ export default function Feed({ onUserClick }) {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-6 pb-24">
-      {/* Formulaire création post */}
+    <div className="max-w-2xl mx-auto p-4 space-y-6">
+      {/* Composer COMPACT mobile (cliquable) */}
       {user && (
-        <form onSubmit={handleCreatePost} className="bg-street-800 border border-street-700 rounded-xl shadow-lg p-4 space-y-3">
+        <div className="md:hidden bg-street-800 border border-street-700 rounded-xl shadow-lg p-3 flex items-center space-x-3">
+          <img
+            src={user.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}
+            alt="Avatar"
+            className="w-10 h-10 rounded-full border-2 border-street-accent"
+          />
+          <div 
+            onClick={() => setShowComposerModal(true)}
+            className="flex-1 bg-street-900 border border-street-700 rounded-full px-4 py-2 text-gray-500 cursor-pointer hover:border-street-accent transition"
+          >
+            Quoi de neuf ?
+          </div>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2 hover:bg-street-700 rounded-lg transition"
+          >
+            <ImageIcon size={24} className="text-gray-400" />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*"
+            onChange={(e) => {
+              setNewPostMedia(e.target.files[0])
+              setShowComposerModal(true)
+            }}
+            className="hidden"
+          />
+        </div>
+      )}
+
+      {/* Composer COMPLET desktop (formulaire classique) */}
+      {user && (
+        <form onSubmit={handleCreatePost} className="hidden md:block bg-street-800 border border-street-700 rounded-xl shadow-lg p-4 space-y-3">
           <textarea
             value={newPostCaption}
             onChange={(e) => setNewPostCaption(e.target.value)}
@@ -304,7 +344,7 @@ export default function Feed({ onUserClick }) {
             rows={3}
           />
           
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <input
               type="file"
               accept="image/*,video/*"
@@ -315,7 +355,7 @@ export default function Feed({ onUserClick }) {
             <button
               type="submit"
               disabled={posting || (!newPostCaption.trim() && !newPostMedia)}
-              className="px-6 py-2 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover disabled:opacity-50 disabled:cursor-not-allowed transition"
+              className="w-full sm:w-auto px-6 py-2 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
               {posting ? 'Publication...' : 'Publier'}
             </button>
@@ -325,13 +365,81 @@ export default function Feed({ onUserClick }) {
         </form>
       )}
 
+      {/* MODAL composer mobile */}
+      {showComposerModal && (
+        <div className="fixed inset-0 bg-black/90 z-[9999] flex items-end md:items-center md:justify-center">
+          <div 
+            className="bg-street-800 rounded-t-2xl md:rounded-2xl w-full md:max-w-lg flex flex-col overflow-hidden relative z-[10000]"
+            style={{ maxHeight: 'calc(100vh - 90px)' }}
+          >
+            <div className="sticky top-0 bg-street-800 border-b border-street-700 p-4 flex items-center justify-between z-10 flex-shrink-0">
+              <h3 className="text-lg font-bold text-white">Créer un post</h3>
+              <button
+                onClick={() => setShowComposerModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreatePost} className="flex flex-col flex-1 min-h-0">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <textarea
+                  value={newPostCaption}
+                  onChange={(e) => setNewPostCaption(e.target.value)}
+                  placeholder="Quoi de neuf ?"
+                  className="w-full p-3 bg-street-900 border border-street-700 text-white rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-street-accent placeholder-gray-500"
+                  rows={4}
+                  autoFocus
+                />
+                
+                <input
+                  type="file"
+                  accept="image/*,video/*"
+                  onChange={(e) => setNewPostMedia(e.target.files[0])}
+                  className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-street-700 file:text-white hover:file:bg-street-600"
+                />
+
+                {newPostMedia && (
+                  <div className="text-sm text-gray-400">
+                    Fichier: {newPostMedia.name}
+                  </div>
+                )}
+
+                {error && <div className="text-red-400 text-sm">{error}</div>}
+              </div>
+
+              <div 
+                className="sticky bottom-0 bg-street-800 border-t border-street-700 p-4 flex gap-3 flex-shrink-0"
+                style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setShowComposerModal(false)}
+                  className="flex-1 px-4 py-3 bg-street-700 text-white font-bold rounded-lg hover:bg-street-600 transition"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={posting || (!newPostCaption.trim() && !newPostMedia)}
+                  className="flex-1 px-4 py-3 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  {posting ? 'Publication...' : 'Publier'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Liste des posts */}
       {posts.length === 0 ? (
         <div className="text-center text-gray-500 py-12 bg-street-800 border border-street-700 rounded-xl">
           Aucun post pour le moment
         </div>
       ) : (
-        posts.map(post => (
+        posts.map((post, index) => (
           <div key={post.id} className="bg-street-800 border border-street-700 rounded-xl shadow-lg overflow-hidden">
             {/* Header */}
             <div className="p-4 flex items-center justify-between">
@@ -389,10 +497,10 @@ export default function Feed({ onUserClick }) {
               </div>
             </div>
 
-            {/* Media */}
-            {post.media_url && (
-              <div className="w-full">
-                {post.type === 'IMAGE' ? (
+            {/* Media - Non cliquable */}
+            <div className="w-full">
+              {post.media_url && (
+                post.type === 'IMAGE' ? (
                   <img 
                     src={post.media_url} 
                     alt="Post media"
@@ -404,9 +512,9 @@ export default function Feed({ onUserClick }) {
                     controls
                     className="w-full h-auto"
                   />
-                ) : null}
-              </div>
-            )}
+                ) : null
+              )}
+            </div>
 
             {/* Caption */}
             {post.caption && (
@@ -476,7 +584,7 @@ export default function Feed({ onUserClick }) {
 
                 {/* Input nouveau commentaire */}
                 {user && (
-                  <div className="flex space-x-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="text"
                       value={newComment[post.id] || ''}
@@ -494,7 +602,7 @@ export default function Feed({ onUserClick }) {
                     />
                     <button
                       onClick={() => handleAddComment(post.id)}
-                      className="px-4 py-2 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover text-sm transition"
+                      className="w-full sm:w-auto px-4 py-2 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover text-sm transition"
                     >
                       Publier
                     </button>

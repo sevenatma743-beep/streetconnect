@@ -189,10 +189,13 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
               className="h-screen w-full snap-start flex items-center justify-center"
             >
               {/* Post Card */}
-              <div className="bg-street-900 rounded-xl max-w-2xl w-full max-h-[95vh] overflow-hidden flex flex-col mx-4">
+              <div 
+                className="bg-street-900 rounded-xl w-full max-h-[95vh] overflow-hidden flex flex-col mx-4"
+                style={{ maxWidth: '640px' }}
+              >
                 
                 {/* Header */}
-                <div className="p-4 border-b border-street-700 flex items-center justify-between bg-street-800">
+                <div className="p-4 border-b border-street-700 flex items-center justify-between bg-street-800 flex-shrink-0">
                   <div className="flex items-center space-x-3">
                     <img
                       src={post.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}
@@ -218,7 +221,7 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
                 </div>
 
                 {/* Média */}
-                <div className="bg-black flex items-center justify-center max-h-[50vh]">
+                <div className="bg-black flex items-center justify-center max-h-[50vh] flex-shrink-0">
                   {post.media_url ? (
                     post.type === 'IMAGE' ? (
                       <img 
@@ -241,7 +244,7 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
                 </div>
 
                 {/* Actions */}
-                <div className="p-4 border-b border-street-700 space-y-3 bg-street-800">
+                <div className="p-4 border-b border-street-700 space-y-3 bg-street-800 flex-shrink-0">
                   <div className="flex items-center space-x-6">
                     <button
                       onClick={() => handleLike(index)}
@@ -273,8 +276,8 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
                   )}
                 </div>
 
-                {/* Preview Commentaires (2 premiers) */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-street-900">
+                {/* Preview Commentaires (2 premiers) - SCROLLABLE */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-street-900 min-h-0">
                   {post.loadingComments ? (
                     <div className="text-center text-gray-500">Chargement...</div>
                   ) : (
@@ -333,9 +336,12 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
                   )}
                 </div>
 
-                {/* Input commentaire */}
+                {/* Input commentaire - STICKY FOOTER avec safe-area */}
                 {user && (
-                  <div className="p-4 border-t border-street-700 bg-street-800">
+                  <div 
+                    className="sticky bottom-0 p-4 border-t border-street-700 bg-street-800 flex-shrink-0"
+                    style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+                  >
                     <div className="flex space-x-2 items-center">
                       <input
                         type="text"
@@ -347,7 +353,7 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
                       />
                       <button
                         onClick={() => handleAddComment(index)}
-                        className="p-2 bg-street-accent text-street-900 rounded-full hover:bg-street-accentHover transition"
+                        className="p-2 bg-street-accent text-street-900 rounded-full hover:bg-street-accentHover transition flex-shrink-0"
                       >
                         <Send size={20} />
                       </button>
