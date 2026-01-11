@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { 
   likePost, 
@@ -23,9 +23,15 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
     }))
   )
   const [showCommentsModal, setShowCommentsModal] = useState(null)
+  const containerRef = useRef(null)
 
   useEffect(() => {
     loadComments(initialIndex)
+    
+    if (containerRef.current) {
+      const scrollPosition = initialIndex * window.innerHeight
+      containerRef.current.scrollTop = scrollPosition
+    }
   }, [])
 
   async function loadComments(index) {
@@ -47,16 +53,26 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
     if (!user) return
     
     const post = postsData[index]
-    const success = post.user_has_liked
+    const wasLiked = post.user_has_liked
+    
+    setPostsData(prev => prev.map((p, i) => 
+      i === index ? {
+        ...p,
+        likes_count: wasLiked ? p.likes_count - 1 : p.likes_count + 1,
+        user_has_liked: !wasLiked
+      } : p
+    ))
+    
+    const success = wasLiked
       ? await unlikePost(post.id, user.id)
       : await likePost(post.id, user.id)
     
-    if (success) {
+    if (!success) {
       setPostsData(prev => prev.map((p, i) => 
         i === index ? {
           ...p,
-          likes_count: p.user_has_liked ? p.likes_count - 1 : p.likes_count + 1,
-          user_has_liked: !p.user_has_liked
+          likes_count: wasLiked ? p.likes_count + 1 : p.likes_count - 1,
+          user_has_liked: wasLiked
         } : p
       ))
     }
@@ -74,14 +90,17 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
       text: post.newComment.trim()
     }
     
+    setPostsData(prev => prev.map((p, i) => 
+      i === index ? { ...p, newComment: '' } : p
+    ))
+    
     const comment = await addComment(commentData)
     if (comment) {
       setPostsData(prev => prev.map((p, i) => 
         i === index ? {
           ...p,
           comments: [...p.comments, comment],
-          comments_count: p.comments_count + 1,
-          newComment: ''
+          comments_count: p.comments_count + 1
         } : p
       ))
     }
@@ -159,7 +178,6 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
       className="fixed inset-0 bg-black z-50"
       onClick={onClose}
     >
-      {/* Bouton fermer */}
       <button
         onClick={onClose}
         className="absolute top-4 right-4 z-10 p-2 bg-black bg-opacity-50 rounded-full text-white hover:bg-opacity-75 transition"
@@ -167,13 +185,12 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
         <X size={24} />
       </button>
 
-      {/* Compteur */}
       <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10 text-white text-sm bg-black bg-opacity-50 px-3 py-1 rounded-full">
         {currentIndex + 1} / {postsData.length}
       </div>
 
-      {/* Container avec scroll vertical */}
       <div 
+        ref={containerRef}
         className="w-full h-full overflow-y-scroll snap-y snap-mandatory"
         style={{ scrollBehavior: 'smooth' }}
         onScroll={handleScroll}
@@ -188,13 +205,11 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
               key={post.id} 
               className="h-screen w-full snap-start flex items-center justify-center"
             >
-              {/* Post Card */}
               <div 
                 className="bg-street-900 rounded-xl w-full max-h-[95vh] overflow-hidden flex flex-col mx-4"
                 style={{ maxWidth: '640px' }}
               >
                 
-                {/* Header */}
                 <div className="p-4 border-b border-street-700 flex items-center justify-between bg-street-800 flex-shrink-0">
                   <div className="flex items-center space-x-3">
                     <img
@@ -220,7 +235,6 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
                   )}
                 </div>
 
-                {/* Média */}
                 <div className="bg-black flex items-center justify-center max-h-[50vh] flex-shrink-0">
                   {post.media_url ? (
                     post.type === 'IMAGE' ? (
@@ -243,7 +257,6 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
                   )}
                 </div>
 
-                {/* Actions */}
                 <div className="p-4 border-b border-street-700 space-y-3 bg-street-800 flex-shrink-0">
                   <div className="flex items-center space-x-6">
                     <button
@@ -267,7 +280,6 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
                     </button>
                   </div>
 
-                  {/* Caption */}
                   {post.caption && (
                     <div>
                       <span className="font-semibold text-white mr-2">{post.username}</span>
@@ -276,7 +288,6 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
                   )}
                 </div>
 
-                {/* Preview Commentaires (2 premiers) - SCROLLABLE */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-street-900 min-h-0">
                   {post.loadingComments ? (
                     <div className="text-center text-gray-500">Chargement...</div>
@@ -317,7 +328,6 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
                         )
                       })}
 
-                      {/* Bouton "Voir tous les commentaires" */}
                       {hasMoreComments && (
                         <button
                           onClick={() => setShowCommentsModal(index)}
@@ -336,7 +346,6 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
                   )}
                 </div>
 
-                {/* Input commentaire - STICKY FOOTER avec safe-area */}
                 {user && (
                   <div 
                     className="sticky bottom-0 p-4 border-t border-street-700 bg-street-800 flex-shrink-0"
@@ -366,7 +375,6 @@ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {
         })}
       </div>
 
-      {/* Modal Commentaires */}
       {showCommentsModal !== null && (
         <CommentsModal
           post={postsData[showCommentsModal]}

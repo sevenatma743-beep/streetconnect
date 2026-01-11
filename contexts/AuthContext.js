@@ -84,12 +84,24 @@ export function AuthProvider({ children }) {
     }
   }
 
+  // Fonction de déconnexion
+  const signOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+      return { error: null }
+    } catch (error) {
+      console.error('Erreur signOut:', error)
+      return { error }
+    }
+  }
+
   const value = {
     user,
     loading,
     signIn,
     signUp,
-    signOut: () => supabase.auth.signOut()
+    signOut
   }
 
   return (
