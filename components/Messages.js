@@ -28,9 +28,7 @@ export default function Messages() {
   const channelRef = useRef(null)
 
   useEffect(() => {
-    if (user) {
-      loadInbox()
-    }
+    if (user) loadInbox()
   }, [user])
 
   useEffect(() => {
@@ -41,7 +39,6 @@ export default function Messages() {
       console.log('👤 Opening conversation with user:', toUserId)
       openConversationWithUser(toUserId)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, conversationId, toUserId])
 
   useEffect(() => {
@@ -49,47 +46,30 @@ export default function Messages() {
   }, [messages])
 
   useEffect(() => {
-    if (activeConversation?.id) {
-      subscribeToMessages()
-    }
+    if (activeConversation?.id) subscribeToMessages()
+
     return () => {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current)
         channelRef.current = null
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConversation?.id])
+  }, [activeConversation])
 
-  /**
-   * ✅ HELPER: Extract user_id from member (supports both snake_case and camelCase)
-   */
   function getMemberId(member) {
     return member?.user_id ?? member?.userId ?? null
   }
 
-  /**
-   * ✅ HELPER: Extract profile from member (supports multiple formats)
-   */
   function getMemberProfile(member) {
     if (!member) return null
-
     const profile = member.profiles ?? member.profile ?? null
-
-    if (Array.isArray(profile) && profile.length > 0) {
-      return profile[0]
-    }
-
+    if (Array.isArray(profile) && profile.length > 0) return profile[0]
     return profile
   }
 
-  /**
-   * ✅ LOAD INBOX - ROBUST MAPPING
-   */
   async function loadInbox() {
     try {
       setLoading(true)
-
       console.log('🔍 Loading inbox for user:', user.id)
 
       const { data: conversations, error } = await supabase
@@ -121,10 +101,10 @@ export default function Messages() {
         return
       }
 
-      const processedInbox = (conversations || []).map((conv) => {
+      const processedInbox = (conversations || []).map(conv => {
         const members = conv.conversation_members || []
 
-        const otherMember = members.find((m) => {
+        const otherMember = members.find(m => {
           const memberId = getMemberId(m)
           return memberId && memberId !== user.id
         })
@@ -136,15 +116,11 @@ export default function Messages() {
         )
         const lastMessage = sortedMessages[0]
 
-        const currentUserMember = members.find((m) => {
-          const memberId = getMemberId(m)
-          return memberId && memberId === user.id
-        })
+        const currentUserMember = members.find(m => getMemberId(m) === user.id)
 
-        const unread =
-          lastMessage && currentUserMember?.last_read_at
-            ? new Date(lastMessage.created_at) > new Date(currentUserMember.last_read_at)
-            : false
+        const unread = lastMessage && currentUserMember?.last_read_at
+          ? new Date(lastMessage.created_at) > new Date(currentUserMember.last_read_at)
+          : false
 
         return {
           id: conv.id,
@@ -152,7 +128,7 @@ export default function Messages() {
           lastMessage: lastMessage || null,
           updatedAt: conv.updated_at,
           unread,
-          memberCount: members.length,
+          memberCount: members.length
         }
       })
 
@@ -166,21 +142,13 @@ export default function Messages() {
     }
   }
 
-  /**
-   * ✅ OPEN CONVERSATION WITH USER
-   */
   async function openConversationWithUser(userId) {
-    if (creatingConversation) {
-      console.warn('⚠️ Conversation creation already in progress')
-      return
-    }
-
-    console.log('💬 Creating/finding DM with user:', userId)
+    if (creatingConversation) return
     setCreatingConversation(true)
 
     try {
       const { data, error } = await supabase.rpc('create_or_get_dm', {
-        other_user_id: userId,
+        other_user_id: userId
       })
 
       if (error) {
@@ -189,36 +157,26 @@ export default function Messages() {
         return
       }
 
-      if (data == null) {
-        console.error('❌ RPC returned null/undefined')
-        alert('Impossible de créer la conversation')
-        return
-      }
-
       const convId = typeof data === 'string' ? data : data?.conversation_id
 
       if (!convId) {
-        console.error('❌ conversationId missing from response:', data)
+        console.error('❌ conversationId missing:', data)
         alert('ID de conversation manquant')
         return
       }
 
-      console.log('✅ Conversation ID:', convId)
       openConversation(convId)
     } catch (err) {
       console.error('💥 Exception in openConversationWithUser:', err)
-      alert("Erreur lors de l'ouverture de la conversation")
+      alert('Erreur lors de l’ouverture de la conversation')
     } finally {
       setCreatingConversation(false)
     }
   }
 
-  /**
-   * ✅ OPEN CONVERSATION - ROBUST MAPPING
-   */
-  async function openConversation(conversationId) {
+  async function openConversation(convId) {
     try {
-      console.log('📨 Loading conversation:', conversationId)
+      console.log('📨 Loading conversation:', convId)
 
       const { data, error } = await supabase
         .from('conversations')
@@ -244,7 +202,7 @@ export default function Messages() {
             )
           )
         `)
-        .eq('id', conversationId)
+        .eq('id', convId)
         .single()
 
       if (error) {
@@ -254,7 +212,7 @@ export default function Messages() {
 
       const members = data.conversation_members || []
 
-      const otherMember = members.find((m) => {
+      const otherMember = members.find(m => {
         const memberId = getMemberId(m)
         return memberId && memberId !== user.id
       })
@@ -269,52 +227,36 @@ export default function Messages() {
         id: data.id,
         otherUser: otherUserProfile,
         messages: sortedMessages,
-        memberCount: members.length,
+        memberCount: members.length
       }
 
       setActiveConversation(conversation)
       setMessages(sortedMessages)
 
-      await markAsRead(conversationId)
-
-      console.log('✅ Conversation loaded:', {
-        id: conversation.id,
-        memberCount: conversation.memberCount,
-        otherUser_username: conversation.otherUser?.username || 'UNDEFINED',
-        otherUser_id: conversation.otherUser?.id || 'UNDEFINED',
-        messageCount: sortedMessages.length,
-      })
+      await markAsRead(convId)
     } catch (err) {
       console.error('💥 Exception in openConversation:', err)
     }
   }
 
-  /**
-   * ✅ MARK AS READ
-   */
-  async function markAsRead(conversationId) {
+  async function markAsRead(convId) {
     try {
       const { error } = await supabase
         .from('conversation_members')
         .update({ last_read_at: new Date().toISOString() })
-        .eq('conversation_id', conversationId)
+        .eq('conversation_id', convId)
         .eq('user_id', user.id)
 
-      if (error) {
-        console.error('❌ Error marking as read:', error)
-      }
+      if (error) console.error('❌ Error marking as read:', error)
     } catch (err) {
       console.error('💥 Exception in markAsRead:', err)
     }
   }
 
-  /**
-   * ✅ SUBSCRIBE TO MESSAGES (REALTIME)
-   * FIX: schema must be "public" (not "realtime")
-   */
   function subscribeToMessages() {
     if (!activeConversation?.id) return
 
+    // Remove previous
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current)
       channelRef.current = null
@@ -328,22 +270,23 @@ export default function Messages() {
         'postgres_changes',
         {
           event: 'INSERT',
-          schema: 'public', // ✅ FIX ICI
+          schema: 'public', // ✅ IMPORTANT : la table messages est dans public
           table: 'messages',
-          filter: `conversation_id=eq.${activeConversation.id}`,
+          filter: `conversation_id=eq.${activeConversation.id}`
         },
         async (payload) => {
+          console.log('📩 Realtime INSERT received:', payload)
+
           const inserted = payload?.new
           if (!inserted?.id) return
 
-          console.log('📩 Realtime INSERT received:', inserted)
+          // Si message déjà présent, skip
+          setMessages(prev => {
+            if (prev.some(m => m.id === inserted.id)) return prev
+            return [...prev, inserted]
+          })
 
-          // Si c'est mon propre message: déjà ajouté en UI dans handleSendMessage
-          if (inserted.sender_id === user.id) {
-            loadInbox()
-            return
-          }
-
+          // On récupère la version complète (avec profile) pour l’affichage clean
           try {
             const { data, error } = await supabase
               .from('messages')
@@ -361,38 +304,28 @@ export default function Messages() {
               .eq('id', inserted.id)
               .single()
 
-            if (error) {
-              console.error('❌ Realtime fetch message error:', error)
-              setMessages((prev) =>
-                prev.some((m) => m.id === inserted.id) ? prev : [...prev, inserted]
-              )
-            } else {
-              setMessages((prev) =>
-                prev.some((m) => m.id === data.id) ? prev : [...prev, data]
-              )
+            if (!error && data?.id) {
+              setMessages(prev => prev.map(m => (m.id === data.id ? data : m)))
             }
-
-            await markAsRead(activeConversation.id)
-            loadInbox()
-          } catch (err) {
-            console.error('💥 Exception in realtime handler:', err)
-            setMessages((prev) =>
-              prev.some((m) => m.id === inserted.id) ? prev : [...prev, inserted]
-            )
-            loadInbox()
+          } catch (e) {
+            console.error('💥 Realtime fetch full message exception:', e)
           }
+
+          // Vue conversation ouverte => lu
+          await markAsRead(activeConversation.id)
+
+          // Update inbox preview
+          loadInbox()
         }
       )
-      .subscribe((status) => {
-        console.log('✅ Realtime status:', status)
-      })
+
+    channel.subscribe((status) => {
+      console.log('✅ Realtime status:', status)
+    })
 
     channelRef.current = channel
   }
 
-  /**
-   * ✅ SEND MESSAGE
-   */
   async function handleSendMessage(e) {
     e.preventDefault()
     if (!newMessage.trim() || !activeConversation || sending) return
@@ -405,7 +338,7 @@ export default function Messages() {
         .insert({
           conversation_id: activeConversation.id,
           sender_id: user.id,
-          text: newMessage.trim(),
+          text: newMessage.trim()
         })
         .select(`
           id,
@@ -425,9 +358,8 @@ export default function Messages() {
         return
       }
 
-      setMessages((prev) => [...prev, data])
+      setMessages(prev => [...prev, data])
       setNewMessage('')
-
       loadInbox()
     } catch (err) {
       console.error('💥 Exception in handleSendMessage:', err)
@@ -436,9 +368,6 @@ export default function Messages() {
     }
   }
 
-  /**
-   * ✅ SEARCH MUTUAL FOLLOWS
-   */
   async function handleSearch(query) {
     setSearchQuery(query)
 
@@ -453,7 +382,7 @@ export default function Messages() {
         .select('following_id')
         .eq('follower_id', user.id)
 
-      const followingIds = (following || []).map((f) => f.following_id)
+      const followingIds = (following || []).map(f => f.following_id)
       if (followingIds.length === 0) {
         setSearchResults([])
         return
@@ -465,7 +394,7 @@ export default function Messages() {
         .eq('following_id', user.id)
         .in('follower_id', followingIds)
 
-      const mutualIds = (followers || []).map((f) => f.follower_id)
+      const mutualIds = (followers || []).map(f => f.follower_id)
       if (mutualIds.length === 0) {
         setSearchResults([])
         return
@@ -491,27 +420,17 @@ export default function Messages() {
     }
   }
 
-  /**
-   * ✅ SELECT USER FROM SEARCH
-   */
   function handleSelectUser(userId) {
-    console.log('🔍 Selected user from search:', userId)
     setShowSearch(false)
     setSearchQuery('')
     setSearchResults([])
     openConversationWithUser(userId)
   }
 
-  /**
-   * ✅ SCROLL TO BOTTOM
-   */
   function scrollToBottom() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  /**
-   * ✅ CLOSE CONVERSATION
-   */
   function closeConversation() {
     setActiveConversation(null)
     setMessages([])
@@ -522,9 +441,9 @@ export default function Messages() {
     loadInbox()
   }
 
-  // ============================================
-  // RENDER: ACTIVE CONVERSATION VIEW
-  // ============================================
+  // =========================
+  // ACTIVE CONVERSATION VIEW
+  // =========================
   if (activeConversation) {
     const displayName = activeConversation.otherUser?.username || 'Utilisateur'
     const displayAvatar =
@@ -536,19 +455,14 @@ export default function Messages() {
     return (
       <div className="flex flex-col h-screen bg-street-900">
         <div className="p-4 border-b border-street-700 bg-street-800 flex items-center gap-3">
-          <button
-            onClick={closeConversation}
-            className="p-2 hover:bg-street-700 rounded-lg transition"
-          >
+          <button onClick={closeConversation} className="p-2 hover:bg-street-700 rounded-lg transition">
             <ArrowLeft size={20} className="text-white" />
           </button>
-
           <img
             src={displayAvatar}
             alt={displayName}
             className="w-10 h-10 rounded-full border-2 border-street-accent"
           />
-
           <div className="flex-1">
             <p className="font-bold text-white">{displayName}</p>
             <p className="text-xs text-gray-400">
@@ -558,7 +472,7 @@ export default function Messages() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {messages.map((msg) => {
+          {messages.map(msg => {
             const isMe = msg.sender_id === user.id
             return (
               <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
@@ -569,10 +483,7 @@ export default function Messages() {
                 >
                   <p className="text-sm">{msg.text}</p>
                   <p className="text-xs mt-1 opacity-70">
-                    {new Date(msg.created_at).toLocaleTimeString('fr-FR', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {new Date(msg.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
               </div>
@@ -607,9 +518,9 @@ export default function Messages() {
     )
   }
 
-  // ============================================
-  // RENDER: INBOX VIEW
-  // ============================================
+  // =========================
+  // INBOX VIEW
+  // =========================
   return (
     <div className="p-4 pb-20 bg-street-900 min-h-screen">
       <div className="mb-6">
@@ -627,7 +538,6 @@ export default function Messages() {
           placeholder="Rechercher une conversation..."
           className="w-full bg-street-800 border border-street-700 rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-street-accent"
         />
-
         {showSearch && searchQuery && (
           <button
             onClick={() => {
@@ -643,17 +553,14 @@ export default function Messages() {
 
         {showSearch && searchResults.length > 0 && (
           <div className="absolute top-full left-0 right-0 mt-2 bg-street-800 border border-street-700 rounded-xl overflow-hidden z-10">
-            {searchResults.map((result) => (
+            {searchResults.map(result => (
               <button
                 key={result.id}
                 onClick={() => handleSelectUser(result.id)}
                 className="w-full flex items-center gap-3 p-3 hover:bg-street-700 transition"
               >
                 <img
-                  src={
-                    result.avatar_url ||
-                    'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'
-                  }
+                  src={result.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}
                   alt={result.username}
                   className="w-10 h-10 rounded-full border-2 border-street-accent"
                 />
@@ -679,7 +586,7 @@ export default function Messages() {
         </div>
       ) : (
         <div className="space-y-3">
-          {inbox.map((conv) => {
+          {inbox.map(conv => {
             const displayName = conv.otherUser?.username || 'Utilisateur inconnu'
             const displayAvatar =
               conv.otherUser?.avatar_url ||
@@ -693,11 +600,7 @@ export default function Messages() {
                 className="bg-street-800 border border-street-700 rounded-2xl p-4 hover:border-street-accent transition cursor-pointer"
               >
                 <div className="flex items-start gap-3">
-                  <img
-                    src={displayAvatar}
-                    alt={displayName}
-                    className="w-12 h-12 rounded-full object-cover"
-                  />
+                  <img src={displayAvatar} alt={displayName} className="w-12 h-12 rounded-full object-cover" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <p className={`font-bold ${conv.unread ? 'text-white' : 'text-gray-300'}`}>
@@ -707,16 +610,10 @@ export default function Messages() {
                         )}
                       </p>
                       <span className="text-xs text-gray-500">
-                        {conv.lastMessage
-                          ? new Date(conv.lastMessage.created_at).toLocaleDateString('fr-FR')
-                          : ''}
+                        {conv.lastMessage ? new Date(conv.lastMessage.created_at).toLocaleDateString('fr-FR') : ''}
                       </span>
                     </div>
-                    <p
-                      className={`text-sm truncate ${
-                        conv.unread ? 'text-white font-semibold' : 'text-gray-400'
-                      }`}
-                    >
+                    <p className={`text-sm truncate ${conv.unread ? 'text-white font-semibold' : 'text-gray-400'}`}>
                       {conv.lastMessage?.text || 'Aucun message'}
                     </p>
                   </div>
