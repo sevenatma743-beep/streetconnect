@@ -382,7 +382,7 @@ export default function Messages() {
         'postgres_changes',
         {
           event: 'INSERT',
-          schema: 'public',
+          schema: 'realtime', // ✅ FIX: was 'public'
           table: 'messages',
           filter: `conversation_id=eq.${activeConversation.id}`
         },
