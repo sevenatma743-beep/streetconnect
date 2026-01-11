@@ -10,11 +10,30 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Récupérer la session initiale
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
+    // Récupérer la session initiale (avec gestion des tokens invalides)
+    const initSession = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession()
+
+        // Si la session est cassée (ex: refresh token invalide), on nettoie
+        if (error) {
+          await supabase.auth.signOut()
+          setUser(null)
+          setLoading(false)
+          return
+        }
+
+        setUser(data?.session?.user ?? null)
+        setLoading(false)
+      } catch (e) {
+        // En cas d'erreur inattendue, on reset aussi pour repartir propre
+        await supabase.auth.signOut()
+        setUser(null)
+        setLoading(false)
+      }
+    }
+
+    initSession()
 
     // Écouter les changements d'auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -30,13 +49,13 @@ export function AuthProvider({ children }) {
   // Fonction de connexion
   const signIn = async (email, password) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ 
-        email, 
-        password 
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
       })
-      
+
       if (error) throw error
-      
+
       return { data, error: null }
     } catch (error) {
       console.error('Erreur signIn:', error)
