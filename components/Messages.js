@@ -39,6 +39,7 @@ export default function Messages() {
       console.log('👤 Opening conversation with user:', toUserId)
       openConversationWithUser(toUserId)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, conversationId, toUserId])
 
   useEffect(() => {
@@ -46,7 +47,9 @@ export default function Messages() {
   }, [messages])
 
   useEffect(() => {
-    if (activeConversation?.id) subscribeToMessages()
+    if (activeConversation?.id) {
+      subscribeToMessages(activeConversation.id)
+    }
 
     return () => {
       if (channelRef.current) {
@@ -54,7 +57,8 @@ export default function Messages() {
         channelRef.current = null
       }
     }
-  }, [activeConversation])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversation?.id])
 
   function getMemberId(member) {
     return member?.user_id ?? member?.userId ?? null
@@ -117,7 +121,6 @@ export default function Messages() {
         const lastMessage = sortedMessages[0]
 
         const currentUserMember = members.find(m => getMemberId(m) === user.id)
-
         const unread = lastMessage && currentUserMember?.last_read_at
           ? new Date(lastMessage.created_at) > new Date(currentUserMember.last_read_at)
           : false
@@ -128,7 +131,7 @@ export default function Messages() {
           lastMessage: lastMessage || null,
           updatedAt: conv.updated_at,
           unread,
-          memberCount: members.length
+          memberCount: members.length,
         }
       })
 
@@ -157,26 +160,25 @@ export default function Messages() {
         return
       }
 
-      const convId = typeof data === 'string' ? data : data?.conversation_id
-
-      if (!convId) {
-        console.error('❌ conversationId missing:', data)
+      const convoId = typeof data === 'string' ? data : data?.conversation_id
+      if (!convoId) {
+        console.error('❌ conversationId missing from response:', data)
         alert('ID de conversation manquant')
         return
       }
 
-      openConversation(convId)
+      openConversation(convoId)
     } catch (err) {
       console.error('💥 Exception in openConversationWithUser:', err)
-      alert('Erreur lors de l’ouverture de la conversation')
+      alert("Erreur lors de l'ouverture de la conversation")
     } finally {
       setCreatingConversation(false)
     }
   }
 
-  async function openConversation(convId) {
+  async function openConversation(conversationId) {
     try {
-      console.log('📨 Loading conversation:', convId)
+      console.log('📨 Loading conversation:', conversationId)
 
       const { data, error } = await supabase
         .from('conversations')
@@ -202,7 +204,7 @@ export default function Messages() {
             )
           )
         `)
-        .eq('id', convId)
+        .eq('id', conversationId)
         .single()
 
       if (error) {
@@ -211,7 +213,6 @@ export default function Messages() {
       }
 
       const members = data.conversation_members || []
-
       const otherMember = members.find(m => {
         const memberId = getMemberId(m)
         return memberId && memberId !== user.id
@@ -233,18 +234,18 @@ export default function Messages() {
       setActiveConversation(conversation)
       setMessages(sortedMessages)
 
-      await markAsRead(convId)
+      await markAsRead(conversationId)
     } catch (err) {
       console.error('💥 Exception in openConversation:', err)
     }
   }
 
-  async function markAsRead(convId) {
+  async function markAsRead(conversationId) {
     try {
       const { error } = await supabase
         .from('conversation_members')
         .update({ last_read_at: new Date().toISOString() })
-        .eq('conversation_id', convId)
+        .eq('conversation_id', conversationId)
         .eq('user_id', user.id)
 
       if (error) console.error('❌ Error marking as read:', error)
@@ -253,40 +254,35 @@ export default function Messages() {
     }
   }
 
-  function subscribeToMessages() {
-    if (!activeConversation?.id) return
-
-    // Remove previous
+  function subscribeToMessages(convoId) {
+    // cleanup before new subscribe
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current)
       channelRef.current = null
     }
 
-    console.log('🔴 Subscribing realtime for conversation:', activeConversation.id)
+    console.log('🟢 Subscribing to realtime messages for conversation:', convoId)
 
     const channel = supabase
-      .channel(`conversation:${activeConversation.id}`)
+      .channel(`conversation:${convoId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
-          schema: 'public', // ✅ IMPORTANT : la table messages est dans public
+          schema: 'public', // ✅ IMPORTANT: messages table is in public schema
           table: 'messages',
-          filter: `conversation_id=eq.${activeConversation.id}`
+          filter: `conversation_id=eq.${convoId}`
         },
         async (payload) => {
-          console.log('📩 Realtime INSERT received:', payload)
-
           const inserted = payload?.new
           if (!inserted?.id) return
 
-          // Si message déjà présent, skip
-          setMessages(prev => {
-            if (prev.some(m => m.id === inserted.id)) return prev
-            return [...prev, inserted]
-          })
+          // If it's my own message, UI already appended it when sending
+          if (inserted.sender_id === user.id) {
+            loadInbox()
+            return
+          }
 
-          // On récupère la version complète (avec profile) pour l’affichage clean
           try {
             const { data, error } = await supabase
               .from('messages')
@@ -304,24 +300,32 @@ export default function Messages() {
               .eq('id', inserted.id)
               .single()
 
-            if (!error && data?.id) {
-              setMessages(prev => prev.map(m => (m.id === data.id ? data : m)))
+            if (error) {
+              console.error('❌ Realtime fetch message error:', error)
+              setMessages(prev =>
+                prev.some(m => m.id === inserted.id) ? prev : [...prev, inserted]
+              )
+            } else {
+              setMessages(prev =>
+                prev.some(m => m.id === data.id) ? prev : [...prev, data]
+              )
             }
-          } catch (e) {
-            console.error('💥 Realtime fetch full message exception:', e)
+
+            // We are viewing this conversation -> mark read
+            markAsRead(convoId)
+            loadInbox()
+          } catch (err) {
+            console.error('💥 Exception in realtime handler:', err)
+            setMessages(prev =>
+              prev.some(m => m.id === inserted.id) ? prev : [...prev, inserted]
+            )
+            loadInbox()
           }
-
-          // Vue conversation ouverte => lu
-          await markAsRead(activeConversation.id)
-
-          // Update inbox preview
-          loadInbox()
         }
       )
-
-    channel.subscribe((status) => {
-      console.log('✅ Realtime status:', status)
-    })
+      .subscribe((status) => {
+        console.log('📡 Realtime status:', status)
+      })
 
     channelRef.current = channel
   }
@@ -358,7 +362,7 @@ export default function Messages() {
         return
       }
 
-      setMessages(prev => [...prev, data])
+      setMessages(prev => (prev.some(m => m.id === data.id) ? prev : [...prev, data]))
       setNewMessage('')
       loadInbox()
     } catch (err) {
@@ -370,7 +374,6 @@ export default function Messages() {
 
   async function handleSearch(query) {
     setSearchQuery(query)
-
     if (query.length === 0) {
       setSearchResults([])
       return
@@ -441,9 +444,9 @@ export default function Messages() {
     loadInbox()
   }
 
-  // =========================
-  // ACTIVE CONVERSATION VIEW
-  // =========================
+  // ============================================
+  // RENDER: ACTIVE CONVERSATION VIEW
+  // ============================================
   if (activeConversation) {
     const displayName = activeConversation.otherUser?.username || 'Utilisateur'
     const displayAvatar =
@@ -455,7 +458,10 @@ export default function Messages() {
     return (
       <div className="flex flex-col h-screen bg-street-900">
         <div className="p-4 border-b border-street-700 bg-street-800 flex items-center gap-3">
-          <button onClick={closeConversation} className="p-2 hover:bg-street-700 rounded-lg transition">
+          <button
+            onClick={closeConversation}
+            className="p-2 hover:bg-street-700 rounded-lg transition"
+          >
             <ArrowLeft size={20} className="text-white" />
           </button>
           <img
@@ -483,7 +489,10 @@ export default function Messages() {
                 >
                   <p className="text-sm">{msg.text}</p>
                   <p className="text-xs mt-1 opacity-70">
-                    {new Date(msg.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(msg.created_at).toLocaleTimeString('fr-FR', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
                   </p>
                 </div>
               </div>
@@ -518,9 +527,9 @@ export default function Messages() {
     )
   }
 
-  // =========================
-  // INBOX VIEW
-  // =========================
+  // ============================================
+  // RENDER: INBOX VIEW
+  // ============================================
   return (
     <div className="p-4 pb-20 bg-street-900 min-h-screen">
       <div className="mb-6">
@@ -591,6 +600,7 @@ export default function Messages() {
             const displayAvatar =
               conv.otherUser?.avatar_url ||
               'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'
+
             const isInvalidConversation = conv.memberCount === 1
 
             return (
@@ -600,7 +610,11 @@ export default function Messages() {
                 className="bg-street-800 border border-street-700 rounded-2xl p-4 hover:border-street-accent transition cursor-pointer"
               >
                 <div className="flex items-start gap-3">
-                  <img src={displayAvatar} alt={displayName} className="w-12 h-12 rounded-full object-cover" />
+                  <img
+                    src={displayAvatar}
+                    alt={displayName}
+                    className="w-12 h-12 rounded-full object-cover"
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <p className={`font-bold ${conv.unread ? 'text-white' : 'text-gray-300'}`}>
@@ -610,7 +624,9 @@ export default function Messages() {
                         )}
                       </p>
                       <span className="text-xs text-gray-500">
-                        {conv.lastMessage ? new Date(conv.lastMessage.created_at).toLocaleDateString('fr-FR') : ''}
+                        {conv.lastMessage
+                          ? new Date(conv.lastMessage.created_at).toLocaleDateString('fr-FR')
+                          : ''}
                       </span>
                     </div>
                     <p className={`text-sm truncate ${conv.unread ? 'text-white font-semibold' : 'text-gray-400'}`}>
