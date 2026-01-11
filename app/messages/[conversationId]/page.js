@@ -1,15 +1,9 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+export const dynamic = "force-dynamic";
 
-export default function ConversationRedirect({ params }) {
-  const router = useRouter();
+export default function Page({ params }) {
   const { conversationId } = params;
 
-  useEffect(() => {
-    router.replace(`/messages?conversation=${conversationId}`);
-  }, [conversationId, router]);
-
-  return null;
+  redirect(`/messages?conversation=${conversationId}`);
 }
