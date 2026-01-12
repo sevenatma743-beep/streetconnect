@@ -1,0 +1,2063 @@
+warning: in the working copy of 'components/PostModal.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/app/page.js b/app/page.js[m
+[1mindex 4a3fe8a..71762db 100644[m
+[1m--- a/app/page.js[m
+[1m+++ b/app/page.js[m
+[36m@@ -1,7 +1,8 @@[m
+ 'use client'[m
+[31m-import { useState } from 'react'[m
+[32m+[m
+[32m+[m[32mimport { useEffect, useState } from 'react'[m
+ import { useAuth } from '../contexts/AuthContext'[m
+[31m-import { useRouter } from 'next/navigation'[m
+[32m+[m[32mimport { useRouter, useSearchParams } from 'next/navigation'[m
+ import Layout from '../components/Layout'[m
+ import Feed from '../components/Feed'[m
+ import Profile from '../components/Profile'[m
+[36m@@ -10,21 +11,57 @@[m [mimport Challenges from '../components/Challenges'[m
+ import Tracker from '../components/Tracker'[m
+ import Shop from '../components/Shop'[m
+ import Messages from '../components/Messages'[m
+[32m+[m[32mimport SearchUsers from '../components/SearchUsers'[m
+[32m+[m[32mimport Notifications from '../components/Notifications'[m
+ [m
+ export default function HomePage() {[m
+   const { user, loading } = useAuth()[m
+   const router = useRouter()[m
+[31m-  [m
+[32m+[m[32m  const searchParams = useSearchParams()[m
+[32m+[m
+[32m+[m[32m  // ✅ Ne montrer l'écran "Chargement..." qu'au tout premier boot[m
+[32m+[m[32m  const [hasBooted, setHasBooted] = useState(false)[m
+[32m+[m
+   const [activeTab, setActiveTab] = useState('feed')[m
+   const [viewingUserId, setViewingUserId] = useState(null)[m
+ [m
+[31m-  // Redirection si pas connecté[m
+[32m+[m[32m  // 🔙 Pour retour intelligent quand on ouvre un profil depuis search / notifications / feed…[m
+[32m+[m[32m  const [profileReturnTab, setProfileReturnTab] = useState('feed')[m
+[32m+[m
+[32m+[m[32m  // Messages state-based[m
+[32m+[m[32m  const [messagesInitialConversationId, setMessagesInitialConversationId] = useState(null)[m
+[32m+[m[32m  const [messagesReturnTab, setMessagesReturnTab] = useState('feed')[m
+[32m+[m
+[32m+[m[32m  // know if we are inside a conversation screen[m
+[32m+[m[32m  const [messagesIsInConversation, setMessagesIsInConversation] = useState(false)[m
+[32m+[m
+[32m+[m[32m  // ✅ Marquer le boot une seule fois quand le loading initial est terminé[m
+[32m+[m[32m  useEffect(() => {[m
+[32m+[m[32m    if (!loading && !hasBooted) setHasBooted(true)[m
+[32m+[m[32m  }, [loading, hasBooted])[m
+[32m+[m
+[32m+[m[32m  // ✅ Lire l’URL (?tab=...&u=...) pour les retours depuis /p/[id], /followers, /following[m
+[32m+[m[32m  useEffect(() => {[m
+[32m+[m[32m    const tab = searchParams?.get('tab')[m
+[32m+[m[32m    const u = searchParams?.get('u')[m
+[32m+[m
+[32m+[m[32m    if (tab) {[m
+[32m+[m[32m      setActiveTab(tab)[m
+[32m+[m[32m      if (tab === 'profile') setViewingUserId(u || null)[m
+[32m+[m[32m      if (tab !== 'profile') setViewingUserId(null)[m
+[32m+[m[32m    } else {[m
+[32m+[m[32m      // pas de tab => rien[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }, [searchParams])[m
+[32m+[m
+[32m+[m[32m  // Redirect if not logged (quand on a une info fiable)[m
+   if (!loading && !user) {[m
+     router.push('/auth')[m
+     return null[m
+   }[m
+ [m
+[31m-  if (loading) {[m
+[32m+[m[32m  // ✅ Loader uniquement au premier chargement[m
+[32m+[m[32m  if (!hasBooted && loading) {[m
+     return ([m
+       <div className="min-h-screen bg-street-900 flex items-center justify-center">[m
+         <div className="text-white">Chargement...</div>[m
+[36m@@ -32,22 +69,90 @@[m [mexport default function HomePage() {[m
+     )[m
+   }[m
+ [m
+[31m-  // Fonction pour aller sur un profil[m
+   function handleUserClick(userId) {[m
+[31m-    console.log('🟢 handleUserClick appelé avec:', userId)[m
+[32m+[m[32m    // mémorise d’où on vient[m
+[32m+[m[32m    setProfileReturnTab(activeTab || 'feed')[m
+     setViewingUserId(userId)[m
+     setActiveTab('profile')[m
+   }[m
+ [m
+[32m+[m[32m  function handleBackFromProfile() {[m
+[32m+[m[32m    setViewingUserId(null)[m
+[32m+[m[32m    setActiveTab(profileReturnTab || 'feed')[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  function handleOpenConversation(conversationId, fromTab = 'feed') {[m
+[32m+[m[32m    setMessagesReturnTab(fromTab)[m
+[32m+[m[32m    setMessagesInitialConversationId(conversationId)[m
+[32m+[m[32m    setActiveTab('messages')[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  function handleOpenMessages(fromTab = 'feed') {[m
+[32m+[m[32m    setMessagesReturnTab(fromTab)[m
+[32m+[m[32m    setMessagesInitialConversationId(null) // inbox[m
+[32m+[m[32m    setActiveTab('messages')[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  function handleOpenNotifications() {[m
+[32m+[m[32m    setActiveTab('notifications')[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  function handleOpenSearch() {[m
+[32m+[m[32m    setActiveTab('search')[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  // hide layout header + bottom nav ONLY when in a conversation[m
+[32m+[m[32m  const hideLayoutHeader = activeTab === 'messages' && messagesIsInConversation[m
+[32m+[m[32m  const hideBottomNav = activeTab === 'messages' && messagesIsInConversation[m
+[32m+[m
+   return ([m
+[31m-    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>[m
+[32m+[m[32m    <Layout[m
+[32m+[m[32m      activeTab={activeTab}[m
+[32m+[m[32m      setActiveTab={(tab) => {[m
+[32m+[m[32m        // ✅ Si on appuie sur PROFIL dans la navbar => revenir sur "mon profil"[m
+[32m+[m[32m        if (tab === 'profile') setViewingUserId(null)[m
+[32m+[m[32m        setActiveTab(tab)[m
+[32m+[m[32m      }}[m
+[32m+[m[32m      hideHeader={hideLayoutHeader}[m
+[32m+[m[32m      hideBottomNav={hideBottomNav}[m
+[32m+[m[32m      onOpenMessages={() => handleOpenMessages(activeTab)}[m
+[32m+[m[32m      onOpenNotifications={handleOpenNotifications}[m
+[32m+[m[32m      onOpenSearch={handleOpenSearch}[m
+[32m+[m[32m    >[m
+       {activeTab === 'feed' && <Feed onUserClick={handleUserClick} />}[m
+[32m+[m
+       {activeTab === 'spots' && <Spots />}[m
+       {activeTab === 'challenges' && <Challenges />}[m
+       {activeTab === 'tracker' && <Tracker />}[m
+       {activeTab === 'shop' && <Shop />}[m
+[31m-      {activeTab === 'messages' && <Messages />}[m
+[31m-      {activeTab === 'profile' && <Profile viewUserId={viewingUserId} />}[m
+[32m+[m
+[32m+[m[32m      {activeTab === 'search' && <SearchUsers onUserClick={handleUserClick} />}[m
+[32m+[m
+[32m+[m[32m      {activeTab === 'notifications' && <Notifications onUserClick={handleUserClick} />}[m
+[32m+[m
+[32m+[m[32m      {activeTab === 'messages' && ([m
+[32m+[m[32m        <Messages[m
+[32m+[m[32m          initialConversationId={messagesInitialConversationId}[m
+[32m+[m[32m          returnTab={messagesReturnTab}[m
+[32m+[m[32m          onExit={() => {[m
+[32m+[m[32m            setMessagesIsInConversation(false)[m
+[32m+[m[32m            setActiveTab(messagesReturnTab || 'feed')[m
+[32m+[m[32m          }}[m
+[32m+[m[32m          onClearInitialConversation={() => setMessagesInitialConversationId(null)}[m
+[32m+[m[32m          onConversationModeChange={(isOpen) => setMessagesIsInConversation(isOpen)}[m
+[32m+[m[32m        />[m
+[32m+[m[32m      )}[m
+[32m+[m
+[32m+[m[32m      {activeTab === 'profile' && ([m
+[32m+[m[32m        <Profile[m
+[32m+[m[32m          viewUserId={viewingUserId}[m
+[32m+[m[32m          returnTab={profileReturnTab}[m
+[32m+[m[32m          onBack={handleBackFromProfile}[m
+[32m+[m[32m          onUserClick={handleUserClick}[m
+[32m+[m[32m          onOpenConversation={(conversationId) => handleOpenConversation(conversationId, 'profile')}[m
+[32m+[m[32m          onOpenMessages={() => handleOpenMessages('profile')}[m
+[32m+[m[32m        />[m
+[32m+[m[32m      )}[m
+     </Layout>[m
+   )[m
+ }[m
+\ No newline at end of file[m
+[1mdiff --git a/components/Layout.js b/components/Layout.js[m
+[1mindex 1618781..386a7b4 100644[m
+[1m--- a/components/Layout.js[m
+[1m+++ b/components/Layout.js[m
+[36m@@ -1,17 +1,22 @@[m
+ 'use client'[m
+[31m-import { Home, MapPin, Award, ShoppingCart, User, MessageCircle } from 'lucide-react'[m
+[32m+[m[32mimport { Home, MapPin, Award, ShoppingCart, User, MessageCircle, Bell, Search } from 'lucide-react'[m
+ import { useAuth } from '../contexts/AuthContext'[m
+ import { useState, useEffect } from 'react'[m
+ import { supabase } from '../lib/supabase'[m
+ [m
+[31m-export default function Layout({ activeTab, setActiveTab, children }) {[m
+[32m+[m[32mexport default function Layout({[m
+[32m+[m[32m  activeTab,[m
+[32m+[m[32m  setActiveTab,[m
+[32m+[m[32m  children,[m
+[32m+[m[32m  hideHeader = false,[m
+[32m+[m[32m  hideBottomNav = false[m
+[32m+[m[32m}) {[m
+   const { user } = useAuth()[m
+   const [profile, setProfile] = useState(null)[m
+ [m
+   useEffect(() => {[m
+[31m-    if (user) {[m
+[31m-      getProfile()[m
+[31m-    }[m
+[32m+[m[32m    if (user) getProfile()[m
+[32m+[m[32m    // eslint-disable-next-line react-hooks/exhaustive-deps[m
+   }, [user])[m
+ [m
+   async function getProfile() {[m
+[36m@@ -21,7 +26,7 @@[m [mexport default function Layout({ activeTab, setActiveTab, children }) {[m
+         .select('*')[m
+         .eq('id', user.id)[m
+         .single()[m
+[31m-      [m
+[32m+[m
+       if (error) throw error[m
+       setProfile(data)[m
+     } catch (e) {[m
+[36m@@ -38,75 +43,84 @@[m [mexport default function Layout({ activeTab, setActiveTab, children }) {[m
+     { id: 'profile', icon: User, label: 'PROFIL' }[m
+   ][m
+ [m
+[31m-  const avatarUrl = profile?.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'[m
+[32m+[m[32m  const mainPaddingBottom = hideBottomNav[m
+[32m+[m[32m    ? 'env(safe-area-inset-bottom, 0px)'[m
+[32m+[m[32m    : 'calc(80px + env(safe-area-inset-bottom, 0px))'[m
+ [m
+   return ([m
+     <div className="flex flex-col h-screen bg-street-900">[m
+       {/* Header */}[m
+[31m-      <header className="bg-street-800 border-b border-street-700 px-4 py-3 flex items-center justify-between">[m
+[31m-        <h1 className="font-display text-2xl font-black">[m
+[31m-          <span className="text-white">STREET</span>[m
+[31m-          <span className="text-street-accent">CONNECT</span>[m
+[31m-        </h1>[m
+[31m-        <div className="flex items-center gap-3">[m
+[31m-          {/* Icône message */}[m
+[31m-          <button [m
+[31m-            onClick={() => setActiveTab('messages')}[m
+[31m-            className="relative p-2 hover:bg-street-700 rounded-lg transition"[m
+[31m-            aria-label="Messages"[m
+[31m-          >[m
+[31m-            <MessageCircle size={24} className="text-gray-400 hover:text-street-accent" />[m
+[31m-          </button>[m
+[31m-          {/* Avatar */}[m
+[31m-          <button[m
+[31m-            onClick={() => setActiveTab('profile')}[m
+[31m-            className="relative"[m
+[31m-          >[m
+[31m-            <img[m
+[31m-              src={avatarUrl}[m
+[31m-              alt="Avatar"[m
+[31m-              className="w-10 h-10 rounded-full border-4 border-street-accent object-cover"[m
+[31m-            />[m
+[31m-          </button>[m
+[31m-        </div>[m
+[31m-      </header>[m
+[32m+[m[32m      {!hideHeader && ([m
+[32m+[m[32m        <header className="bg-street-800 border-b border-street-700 px-4 py-2 flex items-center justify-between">[m
+[32m+[m[32m          {/* LOGO / TITLE */}[m
+[32m+[m[32m          <h1 className="font-display text-lg font-extrabold tracking-wide">[m
+[32m+[m[32m            <span className="text-white">STREET</span>[m
+[32m+[m[32m            <span className="text-street-accent">CONNECT</span>[m
+[32m+[m[32m          </h1>[m
+ [m
+[31m-      {/* Main Content - Added bottom padding for fixed nav */}[m
+[31m-      <main [m
+[31m-        className="flex-1 overflow-y-auto" [m
+[31m-        style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}[m
+[31m-      >[m
+[31m-        {children}[m
+[31m-      </main>[m
+[32m+[m[32m          {/* ACTION ICONS */}[m
+[32m+[m[32m          <div className="flex items-center gap-3">[m
+[32m+[m[32m            <button[m
+[32m+[m[32m              onClick={() => setActiveTab('search')}[m
+[32m+[m[32m              className="p-2 hover:bg-street-700 rounded-lg transition"[m
+[32m+[m[32m              aria-label="Recherche"[m
+[32m+[m[32m            >[m
+[32m+[m[32m              <Search size={22} className="text-gray-400 hover:text-street-accent" />[m
+[32m+[m[32m            </button>[m
+ [m
+[31m-      {/* Bottom Navigation - FIXED for mobile visibility */}[m
+[31m-      <nav [m
+[31m-        className="fixed bottom-0 left-0 right-0 bg-street-800 border-t border-street-700 px-2 py-2 flex items-center justify-around z-50" [m
+[31m-        style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}[m
+[31m-      >[m
+[31m-        {tabs.map((tab) => {[m
+[31m-          const Icon = tab.icon[m
+[32m+[m[32m            <button[m
+[32m+[m[32m              onClick={() => setActiveTab('notifications')}[m
+[32m+[m[32m              className="p-2 hover:bg-street-700 rounded-lg transition"[m
+[32m+[m[32m              aria-label="Notifications"[m
+[32m+[m[32m            >[m
+[32m+[m[32m              <Bell size={22} className="text-gray-400 hover:text-street-accent" />[m
+[32m+[m[32m            </button>[m
+ [m
+[31m-          return ([m
+             <button[m
+[31m-              key={tab.id}[m
+[31m-              onClick={() => setActiveTab(tab.id)}[m
+[31m-              className={`flex flex-col items-center justify-center py-2 px-3 rounded-xl transition-all ${[m
+[31m-                activeTab === tab.id[m
+[31m-                  ? 'text-street-accent'[m
+[31m-                  : 'text-gray-500 hover:text-gray-300'[m
+[31m-              }`}[m
+[32m+[m[32m              onClick={() => setActiveTab('messages')}[m
+[32m+[m[32m              className="p-2 hover:bg-street-700 rounded-lg transition"[m
+[32m+[m[32m              aria-label="Messages"[m
+             >[m
+[31m-              <Icon size={24} strokeWidth={activeTab === tab.id ? 2.5 : 2} />[m
+[31m-              <span className={`text-[10px] font-bold mt-1 ${[m
+[31m-                activeTab === tab.id ? 'text-street-accent' : 'text-gray-500'[m
+[31m-              }`}>[m
+[31m-                {tab.label}[m
+[31m-              </span>[m
+[32m+[m[32m              <MessageCircle size={22} className="text-gray-400 hover:text-street-accent" />[m
+             </button>[m
+[31m-          )[m
+[31m-        })}[m
+[31m-      </nav>[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m        </header>[m
+[32m+[m[32m      )}[m
+[32m+[m
+[32m+[m[32m      {/* Main Content */}[m
+[32m+[m[32m      <main className="flex-1 overflow-y-auto" style={{ paddingBottom: mainPaddingBottom }}>[m
+[32m+[m[32m        {children}[m
+[32m+[m[32m      </main>[m
+[32m+[m
+[32m+[m[32m      {/* Bottom Navigation */}[m
+[32m+[m[32m      {!hideBottomNav && ([m
+[32m+[m[32m        <nav[m
+[32m+[m[32m          className="fixed bottom-0 left-0 right-0 bg-street-800 border-t border-street-700 px-2 py-2 flex items-center justify-around z-50"[m
+[32m+[m[32m          style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}[m
+[32m+[m[32m        >[m
+[32m+[m[32m          {tabs.map((tab) => {[m
+[32m+[m[32m            const Icon = tab.icon[m
+[32m+[m[32m            return ([m
+[32m+[m[32m              <button[m
+[32m+[m[32m                key={tab.id}[m
+[32m+[m[32m                onClick={() => setActiveTab(tab.id)}[m
+[32m+[m[32m                className={`flex flex-col items-center justify-center py-2 px-3 rounded-xl transition-all ${[m
+[32m+[m[32m                  activeTab === tab.id ? 'text-street-accent' : 'text-gray-500 hover:text-gray-300'[m
+[32m+[m[32m                }`}[m
+[32m+[m[32m              >[m
+[32m+[m[32m                <Icon size={22} strokeWidth={activeTab === tab.id ? 2.5 : 2} />[m
+[32m+[m[32m                <span[m
+[32m+[m[32m                  className={`text-[10px] font-bold mt-1 ${[m
+[32m+[m[32m                    activeTab === tab.id ? 'text-street-accent' : 'text-gray-500'[m
+[32m+[m[32m                  }`}[m
+[32m+[m[32m                >[m
+[32m+[m[32m                  {tab.label}[m
+[32m+[m[32m                </span>[m
+[32m+[m[32m              </button>[m
+[32m+[m[32m            )[m
+[32m+[m[32m          })}[m
+[32m+[m[32m        </nav>[m
+[32m+[m[32m      )}[m
+     </div>[m
+   )[m
+ }[m
+\ No newline at end of file[m
+[1mdiff --git a/components/Messages.js b/components/Messages.js[m
+[1mindex 5f1b040..16aa4a2 100644[m
+[1m--- a/components/Messages.js[m
+[1m+++ b/components/Messages.js[m
+[36m@@ -1,15 +1,17 @@[m
+ 'use client'[m
+ import { useState, useEffect, useRef } from 'react'[m
+[31m-import { useSearchParams } from 'next/navigation'[m
+ import { MessageCircle, Search, Send, ArrowLeft, X } from 'lucide-react'[m
+ import { useAuth } from '../contexts/AuthContext'[m
+ import { supabase } from '../lib/supabase'[m
+ [m
+[31m-export default function Messages() {[m
+[32m+[m[32mexport default function Messages({[m
+[32m+[m[32m  initialConversationId = null,[m
+[32m+[m[32m  returnTab = 'feed',[m
+[32m+[m[32m  onExit,[m
+[32m+[m[32m  onClearInitialConversation,[m
+[32m+[m[32m  onConversationModeChange // ✅ NEW[m
+[32m+[m[32m}) {[m
+   const { user } = useAuth()[m
+[31m-  const searchParams = useSearchParams()[m
+[31m-  const conversationId = searchParams.get('conversation')[m
+[31m-  const toUserId = searchParams.get('to')[m
+ [m
+   const [inbox, setInbox] = useState([])[m
+   const [loading, setLoading] = useState(true)[m
+[36m@@ -29,18 +31,24 @@[m [mexport default function Messages() {[m
+ [m
+   useEffect(() => {[m
+     if (user) loadInbox()[m
+[32m+[m[32m    // eslint-disable-next-line react-hooks/exhaustive-deps[m
+   }, [user])[m
+ [m
+[32m+[m[32m  // ✅ tells parent if we're in conversation mode (hide bottom nav + header)[m
+[32m+[m[32m  useEffect(() => {[m
+[32m+[m[32m    if (typeof onConversationModeChange === 'function') {[m
+[32m+[m[32m      onConversationModeChange(!!activeConversation)[m
+[32m+[m[32m    }[m
+[32m+[m[32m    // eslint-disable-next-line react-hooks/exhaustive-deps[m
+[32m+[m[32m  }, [activeConversation])[m
+[32m+[m
+[32m+[m[32m  // ✅ Open convo instantly when Messages tab opens with initialConversationId[m
+   useEffect(() => {[m
+[31m-    if (user && conversationId) {[m
+[31m-      console.log('📨 Opening conversation by ID:', conversationId)[m
+[31m-      openConversation(conversationId)[m
+[31m-    } else if (user && toUserId) {[m
+[31m-      console.log('👤 Opening conversation with user:', toUserId)[m
+[31m-      openConversationWithUser(toUserId)[m
+[32m+[m[32m    if (user && initialConversationId) {[m
+[32m+[m[32m      openConversation(initialConversationId)[m
+     }[m
+     // eslint-disable-next-line react-hooks/exhaustive-deps[m
+[31m-  }, [user, conversationId, toUserId])[m
+[32m+[m[32m  }, [user, initialConversationId])[m
+ [m
+   useEffect(() => {[m
+     scrollToBottom()[m
+[36m@@ -74,7 +82,6 @@[m [mexport default function Messages() {[m
+   async function loadInbox() {[m
+     try {[m
+       setLoading(true)[m
+[31m-      console.log('🔍 Loading inbox for user:', user.id)[m
+ [m
+       const { data: conversations, error } = await supabase[m
+         .from('conversations')[m
+[36m@@ -121,9 +128,10 @@[m [mexport default function Messages() {[m
+         const lastMessage = sortedMessages[0][m
+ [m
+         const currentUserMember = members.find(m => getMemberId(m) === user.id)[m
+[31m-        const unread = lastMessage && currentUserMember?.last_read_at[m
+[31m-          ? new Date(lastMessage.created_at) > new Date(currentUserMember.last_read_at)[m
+[31m-          : false[m
+[32m+[m[32m        const unread =[m
+[32m+[m[32m          lastMessage && currentUserMember?.last_read_at[m
+[32m+[m[32m            ? new Date(lastMessage.created_at) > new Date(currentUserMember.last_read_at)[m
+[32m+[m[32m            : false[m
+ [m
+         return {[m
+           id: conv.id,[m
+[36m@@ -131,11 +139,10 @@[m [mexport default function Messages() {[m
+           lastMessage: lastMessage || null,[m
+           updatedAt: conv.updated_at,[m
+           unread,[m
+[31m-          memberCount: members.length,[m
+[32m+[m[32m          memberCount: members.length[m
+         }[m
+       })[m
+ [m
+[31m-      console.log('✅ Inbox loaded:', processedInbox.length, 'conversations')[m
+       setInbox(processedInbox)[m
+     } catch (err) {[m
+       console.error('💥 Exception in loadInbox:', err)[m
+[36m@@ -178,8 +185,6 @@[m [mexport default function Messages() {[m
+ [m
+   async function openConversation(conversationId) {[m
+     try {[m
+[31m-      console.log('📨 Loading conversation:', conversationId)[m
+[31m-[m
+       const { data, error } = await supabase[m
+         .from('conversations')[m
+         .select(`[m
+[36m@@ -219,7 +224,6 @@[m [mexport default function Messages() {[m
+       })[m
+ [m
+       const otherUserProfile = getMemberProfile(otherMember)[m
+[31m-[m
+       const sortedMessages = (data.messages || []).sort([m
+         (a, b) => new Date(a.created_at) - new Date(b.created_at)[m
+       )[m
+[36m@@ -235,6 +239,10 @@[m [mexport default function Messages() {[m
+       setMessages(sortedMessages)[m
+ [m
+       await markAsRead(conversationId)[m
+[32m+[m
+[32m+[m[32m      if (typeof onClearInitialConversation === 'function') {[m
+[32m+[m[32m        onClearInitialConversation()[m
+[32m+[m[32m      }[m
+     } catch (err) {[m
+       console.error('💥 Exception in openConversation:', err)[m
+     }[m
+[36m@@ -255,21 +263,18 @@[m [mexport default function Messages() {[m
+   }[m
+ [m
+   function subscribeToMessages(convoId) {[m
+[31m-    // cleanup before new subscribe[m
+     if (channelRef.current) {[m
+       supabase.removeChannel(channelRef.current)[m
+       channelRef.current = null[m
+     }[m
+ [m
+[31m-    console.log('🟢 Subscribing to realtime messages for conversation:', convoId)[m
+[31m-[m
+     const channel = supabase[m
+       .channel(`conversation:${convoId}`)[m
+       .on([m
+         'postgres_changes',[m
+         {[m
+           event: 'INSERT',[m
+[31m-          schema: 'public', // ✅ IMPORTANT: messages table is in public schema[m
+[32m+[m[32m          schema: 'public',[m
+           table: 'messages',[m
+           filter: `conversation_id=eq.${convoId}`[m
+         },[m
+[36m@@ -277,7 +282,6 @@[m [mexport default function Messages() {[m
+           const inserted = payload?.new[m
+           if (!inserted?.id) return[m
+ [m
+[31m-          // If it's my own message, UI already appended it when sending[m
+           if (inserted.sender_id === user.id) {[m
+             loadInbox()[m
+             return[m
+[36m@@ -301,7 +305,6 @@[m [mexport default function Messages() {[m
+               .single()[m
+ [m
+             if (error) {[m
+[31m-              console.error('❌ Realtime fetch message error:', error)[m
+               setMessages(prev =>[m
+                 prev.some(m => m.id === inserted.id) ? prev : [...prev, inserted][m
+               )[m
+[36m@@ -311,7 +314,6 @@[m [mexport default function Messages() {[m
+               )[m
+             }[m
+ [m
+[31m-            // We are viewing this conversation -> mark read[m
+             markAsRead(convoId)[m
+             loadInbox()[m
+           } catch (err) {[m
+[36m@@ -323,9 +325,7 @@[m [mexport default function Messages() {[m
+           }[m
+         }[m
+       )[m
+[31m-      .subscribe((status) => {[m
+[31m-        console.log('📡 Realtime status:', status)[m
+[31m-      })[m
+[32m+[m[32m      .subscribe()[m
+ [m
+     channelRef.current = channel[m
+   }[m
+[36m@@ -434,6 +434,14 @@[m [mexport default function Messages() {[m
+     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })[m
+   }[m
+ [m
+[32m+[m[32m  function handleBack() {[m
+[32m+[m[32m    if (activeConversation) {[m
+[32m+[m[32m      closeConversation()[m
+[32m+[m[32m      return[m
+[32m+[m[32m    }[m
+[32m+[m[32m    if (typeof onExit === 'function') onExit()[m
+[32m+[m[32m  }[m
+[32m+[m
+   function closeConversation() {[m
+     setActiveConversation(null)[m
+     setMessages([])[m
+[36m@@ -459,7 +467,7 @@[m [mexport default function Messages() {[m
+       <div className="flex flex-col h-screen bg-street-900">[m
+         <div className="p-4 border-b border-street-700 bg-street-800 flex items-center gap-3">[m
+           <button[m
+[31m-            onClick={closeConversation}[m
+[32m+[m[32m            onClick={handleBack}[m
+             className="p-2 hover:bg-street-700 rounded-lg transition"[m
+           >[m
+             <ArrowLeft size={20} className="text-white" />[m
+[36m@@ -528,16 +536,11 @@[m [mexport default function Messages() {[m
+   }[m
+ [m
+   // ============================================[m
+[31m-  // RENDER: INBOX VIEW[m
+[32m+[m[32m  // RENDER: INBOX VIEW (✅ sans gros titre + sans flèche)[m
+   // ============================================[m
+   return ([m
+[31m-    <div className="p-4 pb-20 bg-street-900 min-h-screen">[m
+[31m-      <div className="mb-6">[m
+[31m-        <h2 className="font-display font-bold text-3xl text-white">MESSAGES</h2>[m
+[31m-        <p className="text-sm text-gray-400 mt-1">Tes conversations</p>[m
+[31m-      </div>[m
+[31m-[m
+[31m-      <div className="mb-6 relative">[m
+[32m+[m[32m    <div className="p-4 bg-street-900 min-h-screen">[m
+[32m+[m[32m      <div className="mb-4 relative">[m
+         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />[m
+         <input[m
+           type="text"[m
+[36m@@ -629,7 +632,11 @@[m [mexport default function Messages() {[m
+                           : ''}[m
+                       </span>[m
+                     </div>[m
+[31m-                    <p className={`text-sm truncate ${conv.unread ? 'text-white font-semibold' : 'text-gray-400'}`}>[m
+[32m+[m[32m                    <p[m
+[32m+[m[32m                      className={`text-sm truncate ${[m
+[32m+[m[32m                        conv.unread ? 'text-white font-semibold' : 'text-gray-400'[m
+[32m+[m[32m                      }`}[m
+[32m+[m[32m                    >[m
+                       {conv.lastMessage?.text || 'Aucun message'}[m
+                     </p>[m
+                   </div>[m
+[1mdiff --git a/components/PostModal.js b/components/PostModal.js[m
+[1mindex e73cc9b..aba6435 100644[m
+[1m--- a/components/PostModal.js[m
+[1m+++ b/components/PostModal.js[m
+[36m@@ -1,19 +1,18 @@[m
+ import { useState, useEffect, useRef } from 'react'[m
+ import { useAuth } from '../contexts/AuthContext'[m
+[31m-import { [m
+[31m-  likePost, [m
+[31m-  unlikePost, [m
+[31m-  getComments, [m
+[31m-  addComment, [m
+[32m+[m[32mimport {[m
+[32m+[m[32m  likePost,[m
+[32m+[m[32m  unlikePost,[m
+[32m+[m[32m  getComments,[m
+[32m+[m[32m  addComment,[m
+   deleteComment,[m
+[31m-  deletePost [m
+[32m+[m[32m  deletePost[m
+ } from '../lib/supabase'[m
+ import { X, Heart, MessageCircle, Send } from 'lucide-react'[m
+ import CommentsModal from './CommentsModal'[m
+ [m
+ export default function PostModal({ posts, initialIndex, onClose, onDelete }) {[m
+   const { user } = useAuth()[m
+[31m-  const [currentIndex, setCurrentIndex] = useState(initialIndex)[m
+   const [postsData, setPostsData] = useState([m
+     posts.map(post => ({[m
+       ...post,[m
+[36m@@ -25,50 +24,58 @@[m [mexport default function PostModal({ posts, initialIndex, onClose, onDelete }) {[m
+   const [showCommentsModal, setShowCommentsModal] = useState(null)[m
+   const containerRef = useRef(null)[m
+ [m
+[32m+[m[32m  // refs pour scroller vers le post cliqué[m
+[32m+[m[32m  const postRefs = useRef([])[m
+[32m+[m
+   useEffect(() => {[m
+[32m+[m[32m    // charger les commentaires du post ouvert[m
+     loadComments(initialIndex)[m
+[31m-    [m
+[31m-    if (containerRef.current) {[m
+[31m-      const scrollPosition = initialIndex * window.innerHeight[m
+[31m-      containerRef.current.scrollTop = scrollPosition[m
+[31m-    }[m
+[32m+[m
+[32m+[m[32m    // scroller vers le bon post (sans calcul "h-screen")[m
+[32m+[m[32m    requestAnimationFrame(() => {[m
+[32m+[m[32m      const el = postRefs.current[initialIndex][m
+[32m+[m[32m      if (el && containerRef.current) {[m
+[32m+[m[32m        el.scrollIntoView({ behavior: 'smooth', block: 'start' })[m
+[32m+[m[32m      }[m
+[32m+[m[32m    })[m
+[32m+[m[32m    // eslint-disable-next-line react-hooks/exhaustive-deps[m
+   }, [])[m
+ [m
+   async function loadComments(index) {[m
+     const post = postsData[index][m
+     if (!post || post.comments.length > 0 || post.loadingComments) return[m
+ [m
+[31m-    setPostsData(prev => prev.map((p, i) => [m
+[32m+[m[32m    setPostsData(prev => prev.map((p, i) =>[m
+       i === index ? { ...p, loadingComments: true } : p[m
+     ))[m
+ [m
+     const comments = await getComments(post.id)[m
+[31m-    [m
+[31m-    setPostsData(prev => prev.map((p, i) => [m
+[32m+[m
+[32m+[m[32m    setPostsData(prev => prev.map((p, i) =>[m
+       i === index ? { ...p, comments, loadingComments: false } : p[m
+     ))[m
+   }[m
+ [m
+   async function handleLike(index) {[m
+     if (!user) return[m
+[31m-    [m
+[32m+[m
+     const post = postsData[index][m
+     const wasLiked = post.user_has_liked[m
+[31m-    [m
+[31m-    setPostsData(prev => prev.map((p, i) => [m
+[32m+[m
+[32m+[m[32m    setPostsData(prev => prev.map((p, i) =>[m
+       i === index ? {[m
+         ...p,[m
+         likes_count: wasLiked ? p.likes_count - 1 : p.likes_count + 1,[m
+         user_has_liked: !wasLiked[m
+       } : p[m
+     ))[m
+[31m-    [m
+[32m+[m
+     const success = wasLiked[m
+       ? await unlikePost(post.id, user.id)[m
+       : await likePost(post.id, user.id)[m
+[31m-    [m
+[32m+[m
+     if (!success) {[m
+[31m-      setPostsData(prev => prev.map((p, i) => [m
+[32m+[m[32m      setPostsData(prev => prev.map((p, i) =>[m
+         i === index ? {[m
+           ...p,[m
+           likes_count: wasLiked ? p.likes_count + 1 : p.likes_count - 1,[m
+[36m@@ -80,23 +87,23 @@[m [mexport default function PostModal({ posts, initialIndex, onClose, onDelete }) {[m
+ [m
+   async function handleAddComment(index) {[m
+     if (!user) return[m
+[31m-    [m
+[32m+[m
+     const post = postsData[index][m
+     if (!post.newComment.trim()) return[m
+[31m-    [m
+[32m+[m
+     const commentData = {[m
+       post_id: post.id,[m
+       user_id: user.id,[m
+       text: post.newComment.trim()[m
+     }[m
+[31m-    [m
+[31m-    setPostsData(prev => prev.map((p, i) => [m
+[32m+[m
+[32m+[m[32m    setPostsData(prev => prev.map((p, i) =>[m
+       i === index ? { ...p, newComment: '' } : p[m
+     ))[m
+[31m-    [m
+[32m+[m
+     const comment = await addComment(commentData)[m
+     if (comment) {[m
+[31m-      setPostsData(prev => prev.map((p, i) => [m
+[32m+[m[32m      setPostsData(prev => prev.map((p, i) =>[m
+         i === index ? {[m
+           ...p,[m
+           comments: [...p.comments, comment],[m
+[36m@@ -107,8 +114,8 @@[m [mexport default function PostModal({ posts, initialIndex, onClose, onDelete }) {[m
+   }[m
+ [m
+   function handleCommentAdded(comment) {[m
+[31m-    setPostsData(prev => prev.map((p, i) => [m
+[31m-      i === currentIndex ? {[m
+[32m+[m[32m    setPostsData(prev => prev.map((p, i) =>[m
+[32m+[m[32m      i === showCommentsModal ? {[m
+         ...p,[m
+         comments: [...p.comments, comment],[m
+         comments_count: p.comments_count + 1[m
+[36m@@ -118,12 +125,12 @@[m [mexport default function PostModal({ posts, initialIndex, onClose, onDelete }) {[m
+ [m
+   async function handleDeleteComment(postIndex, commentId) {[m
+     if (!confirm('Supprimer ce commentaire ?')) return[m
+[31m-    [m
+[32m+[m
+     const post = postsData[postIndex][m
+     const success = await deleteComment(commentId, user.id, post.user_id)[m
+[31m-    [m
+[32m+[m
+     if (success) {[m
+[31m-      setPostsData(prev => prev.map((p, i) => [m
+[32m+[m[32m      setPostsData(prev => prev.map((p, i) =>[m
+         i === postIndex ? {[m
+           ...p,[m
+           comments: p.comments.filter(c => c.id !== commentId),[m
+[36m@@ -134,8 +141,8 @@[m [mexport default function PostModal({ posts, initialIndex, onClose, onDelete }) {[m
+   }[m
+ [m
+   function handleCommentDeleted(commentId) {[m
+[31m-    setPostsData(prev => prev.map((p, i) => [m
+[31m-      i === currentIndex ? {[m
+[32m+[m[32m    setPostsData(prev => prev.map((p, i) =>[m
+[32m+[m[32m      i === showCommentsModal ? {[m
+         ...p,[m
+         comments: p.comments.filter(c => c.id !== commentId),[m
+         comments_count: Math.max(p.comments_count - 1, 0)[m
+[36m@@ -145,10 +152,10 @@[m [mexport default function PostModal({ posts, initialIndex, onClose, onDelete }) {[m
+ [m
+   async function handleDeletePost(index) {[m
+     if (!confirm('Supprimer ce post ?')) return[m
+[31m-    [m
+[32m+[m
+     const post = postsData[index][m
+     const success = await deletePost(post.id, user.id)[m
+[31m-    [m
+[32m+[m
+     if (success) {[m
+       onDelete(post.id)[m
+       onClose()[m
+[36m@@ -156,28 +163,14 @@[m [mexport default function PostModal({ posts, initialIndex, onClose, onDelete }) {[m
+   }[m
+ [m
+   function updateNewComment(index, value) {[m
+[31m-    setPostsData(prev => prev.map((p, i) => [m
+[32m+[m[32m    setPostsData(prev => prev.map((p, i) =>[m
+       i === index ? { ...p, newComment: value } : p[m
+     ))[m
+   }[m
+ [m
+[31m-  function handleScroll(e) {[m
+[31m-    const container = e.target[m
+[31m-    const scrollPosition = container.scrollTop[m
+[31m-    const itemHeight = container.clientHeight[m
+[31m-    const newIndex = Math.round(scrollPosition / itemHeight)[m
+[31m-    [m
+[31m-    if (newIndex !== currentIndex && newIndex >= 0 && newIndex < postsData.length) {[m
+[31m-      setCurrentIndex(newIndex)[m
+[31m-      loadComments(newIndex)[m
+[31m-    }[m
+[31m-  }[m
+[31m-[m
+   return ([m
+[31m-    <div [m
+[31m-      className="fixed inset-0 bg-black z-50"[m
+[31m-      onClick={onClose}[m
+[31m-    >[m
+[32m+[m[32m    <div className="fixed inset-0 bg-black z-50" onClick={onClose}>[m
+[32m+[m[32m      {/* bouton fermer */}[m
+       <button[m
+         onClick={onClose}[m
+         className="absolute top-4 right-4 z-10 p-2 bg-black bg-opacity-50 rounded-full text-white hover:bg-opacity-75 transition"[m
+[36m@@ -185,194 +178,203 @@[m [mexport default function PostModal({ posts, initialIndex, onClose, onDelete }) {[m
+         <X size={24} />[m
+       </button>[m
+ [m
+[31m-      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10 text-white text-sm bg-black bg-opacity-50 px-3 py-1 rounded-full">[m
+[31m-        {currentIndex + 1} / {postsData.length}[m
+[31m-      </div>[m
+[31m-[m
+[31m-      <div [m
+[32m+[m[32m      {/* container scroll NORMAL */}[m
+[32m+[m[32m      <div[m
+         ref={containerRef}[m
+[31m-        className="w-full h-full overflow-y-scroll snap-y snap-mandatory"[m
+[31m-        style={{ scrollBehavior: 'smooth' }}[m
+[31m-        onScroll={handleScroll}[m
+[32m+[m[32m        className="w-full h-full overflow-y-auto"[m
+         onClick={(e) => e.stopPropagation()}[m
+[32m+[m[32m        style={{ WebkitOverflowScrolling: 'touch' }}[m
+       >[m
+[31m-        {postsData.map((post, index) => {[m
+[31m-          const previewComments = post.comments.slice(0, 2)[m
+[31m-          const hasMoreComments = post.comments.length > 2[m
+[31m-          [m
+[31m-          return ([m
+[31m-            <div [m
+[31m-              key={post.id} [m
+[31m-              className="h-screen w-full snap-start flex items-center justify-center"[m
+[31m-            >[m
+[31m-              <div [m
+[31m-                className="bg-street-900 rounded-xl w-full max-h-[95vh] overflow-hidden flex flex-col mx-4"[m
+[31m-                style={{ maxWidth: '640px' }}[m
+[31m-              >[m
+[31m-                [m
+[31m-                <div className="p-4 border-b border-street-700 flex items-center justify-between bg-street-800 flex-shrink-0">[m
+[31m-                  <div className="flex items-center space-x-3">[m
+[31m-                    <img[m
+[31m-                      src={post.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}[m
+[31m-                      alt={post.username}[m
+[31m-                      className="w-10 h-10 rounded-full border-2 border-street-accent"[m
+[31m-                    />[m
+[31m-                    <div>[m
+[31m-                      <div className="font-semibold text-white">{post.username}</div>[m
+[31m-                      <div className="text-xs text-gray-500">[m
+[31m-                        {new Date(post.created_at).toLocaleDateString('fr-FR')}[m
+[32m+[m[32m        {/* petit espace en haut pour pas que le X recouvre */}[m
+[32m+[m[32m        <div className="h-16" />[m
+[32m+[m
+[32m+[m[32m        <div className="flex justify-center px-4 pb-10">[m
+[32m+[m[32m          <div className="w-full" style={{ maxWidth: '640px' }}>[m
+[32m+[m[32m            {postsData.map((post, index) => {[m
+[32m+[m[32m              const previewComments = post.comments.slice(0, 2)[m
+[32m+[m[32m              const hasMoreComments = post.comments.length > 2[m
+[32m+[m
+[32m+[m[32m              return ([m
+[32m+[m[32m                <div[m
+[32m+[m[32m                  key={post.id}[m
+[32m+[m[32m                  ref={(el) => (postRefs.current[index] = el)}[m
+[32m+[m[32m                  className="mb-6 bg-street-900 rounded-xl overflow-hidden border border-street-700"[m
+[32m+[m[32m                >[m
+[32m+[m[32m                  {/* header post */}[m
+[32m+[m[32m                  <div className="p-4 border-b border-street-700 flex items-center justify-between bg-street-800">[m
+[32m+[m[32m                    <div className="flex items-center space-x-3">[m
+[32m+[m[32m                      <img[m
+[32m+[m[32m                        src={post.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}[m
+[32m+[m[32m                        alt={post.username}[m
+[32m+[m[32m                        className="w-10 h-10 rounded-full border-2 border-street-accent"[m
+[32m+[m[32m                      />[m
+[32m+[m[32m                      <div>[m
+[32m+[m[32m                        <div className="font-semibold text-white">{post.username}</div>[m
+[32m+[m[32m                        <div className="text-xs text-gray-500">[m
+[32m+[m[32m                          {new Date(post.created_at).toLocaleDateString('fr-FR')}[m
+[32m+[m[32m                        </div>[m
+                       </div>[m
+                     </div>[m
+[32m+[m
+[32m+[m[32m                    {user && post.user_id === user.id && ([m
+[32m+[m[32m                      <button[m
+[32m+[m[32m                        onClick={() => handleDeletePost(index)}[m
+[32m+[m[32m                        className="text-red-400 hover:text-red-300 text-sm"[m
+[32m+[m[32m                      >[m
+[32m+[m[32m                        🗑️[m
+[32m+[m[32m                      </button>[m
+[32m+[m[32m                    )}[m
+                   </div>[m
+[31m-                  [m
+[31m-                  {user && post.user_id === user.id && ([m
+[31m-                    <button[m
+[31m-                      onClick={() => handleDeletePost(index)}[m
+[31m-                      className="text-red-400 hover:text-red-300 text-sm"[m
+[31m-                    >[m
+[31m-                      🗑️[m
+[31m-                    </button>[m
+[31m-                  )}[m
+[31m-                </div>[m
+ [m
+[31m-                <div className="bg-black flex items-center justify-center max-h-[50vh] flex-shrink-0">[m
+[31m-                  {post.media_url ? ([m
+[31m-                    post.type === 'IMAGE' ? ([m
+[31m-                      <img [m
+[31m-                        src={post.media_url} [m
+[31m-                        alt="Post" [m
+[31m-                        className="w-full h-auto max-h-[50vh] object-contain"[m
+[31m-                      />[m
+[31m-                    ) : post.type === 'VIDEO' ? ([m
+[31m-                      <video [m
+[31m-                        src={post.media_url} [m
+[31m-                        controls [m
+[31m-                        className="w-full h-auto max-h-[50vh]"[m
+[31m-                      />[m
+[31m-                    ) : null[m
+[31m-                  ) : ([m
+[31m-                    <div className="p-8 text-center">[m
+[31m-                      <p className="text-white text-lg">{post.caption}</p>[m
+[32m+[m[32m                  {/* media */}[m
+[32m+[m[32m                  <div className="bg-black flex items-center justify-center">[m
+[32m+[m[32m                    {post.media_url ? ([m
+[32m+[m[32m                      post.type === 'IMAGE' ? ([m
+[32m+[m[32m                        <img[m
+[32m+[m[32m                          src={post.media_url}[m
+[32m+[m[32m                          alt="Post"[m
+[32m+[m[32m                          className="w-full h-auto object-contain"[m
+[32m+[m[32m                        />[m
+[32m+[m[32m                      ) : post.type === 'VIDEO' ? ([m
+[32m+[m[32m                        <video[m
+[32m+[m[32m                          src={post.media_url}[m
+[32m+[m[32m                          controls[m
+[32m+[m[32m                          className="w-full h-auto"[m
+[32m+[m[32m                        />[m
+[32m+[m[32m                      ) : null[m
+[32m+[m[32m                    ) : ([m
+[32m+[m[32m                      <div className="p-8 text-center">[m
+[32m+[m[32m                        <p className="text-white text-lg">{post.caption}</p>[m
+[32m+[m[32m                      </div>[m
+[32m+[m[32m                    )}[m
+[32m+[m[32m                  </div>[m
+[32m+[m
+[32m+[m[32m                  {/* actions + caption */}[m
+[32m+[m[32m                  <div className="p-4 border-b border-street-700 space-y-3 bg-street-800">[m
+[32m+[m[32m                    <div className="flex items-center space-x-6">[m
+[32m+[m[32m                      <button[m
+[32m+[m[32m                        onClick={() => handleLike(index)}[m
+[32m+[m[32m                        className="flex items-center space-x-2 text-gray-400 hover:text-red-500 transition"[m
+[32m+[m[32m                      >[m
+[32m+[m[32m                        {post.user_has_liked ? ([m
+[32m+[m[32m                          <Heart size={24} fill="currentColor" className="text-red-500" />[m
+[32m+[m[32m                        ) : ([m
+[32m+[m[32m                          <Heart size={24} />[m
+[32m+[m[32m                        )}[m
+[32m+[m[32m                        <span className="text-sm font-semibold">{post.likes_count || 0}</span>[m
+[32m+[m[32m                      </button>[m
+[32m+[m
+[32m+[m[32m                      <button[m
+[32m+[m[32m                        onClick={() => {[m
+[32m+[m[32m                          setShowCommentsModal(index)[m
+[32m+[m[32m                          loadComments(index)[m
+[32m+[m[32m                        }}[m
+[32m+[m[32m                        className="flex items-center space-x-2 text-gray-400 hover:text-street-accent transition"[m
+[32m+[m[32m                      >[m
+[32m+[m[32m                        <MessageCircle size={24} />[m
+[32m+[m[32m                        <span className="text-sm font-semibold">{post.comments_count || 0}</span>[m
+[32m+[m[32m                      </button>[m
+                     </div>[m
+[31m-                  )}[m
+[31m-                </div>[m
+ [m
+[31m-                <div className="p-4 border-b border-street-700 space-y-3 bg-street-800 flex-shrink-0">[m
+[31m-                  <div className="flex items-center space-x-6">[m
+[31m-                    <button[m
+[31m-                      onClick={() => handleLike(index)}[m
+[31m-                      className="flex items-center space-x-2 text-gray-400 hover:text-red-500 transition"[m
+[31m-                    >[m
+[31m-                      {post.user_has_liked ? ([m
+[31m-                        <Heart size={24} fill="currentColor" className="text-red-500" />[m
+[31m-                      ) : ([m
+[31m-                        <Heart size={24} />[m
+[31m-                      )}[m
+[31m-                      <span className="text-sm font-semibold">{post.likes_count || 0}</span>[m
+[31m-                    </button>[m
+[31m-                    [m
+[31m-                    <button[m
+[31m-                      onClick={() => setShowCommentsModal(index)}[m
+[31m-                      className="flex items-center space-x-2 text-gray-400 hover:text-street-accent transition"[m
+[31m-                    >[m
+[31m-                      <MessageCircle size={24} />[m
+[31m-                      <span className="text-sm font-semibold">{post.comments_count || 0}</span>[m
+[31m-                    </button>[m
+[32m+[m[32m                    {post.caption && ([m
+[32m+[m[32m                      <div>[m
+[32m+[m[32m                        <span className="font-semibold text-white mr-2">{post.username}</span>[m
+[32m+[m[32m                        <span className="text-gray-300 text-sm">{post.caption}</span>[m
+[32m+[m[32m                      </div>[m
+[32m+[m[32m                    )}[m
+                   </div>[m
+ [m
+[31m-                  {post.caption && ([m
+[31m-                    <div>[m
+[31m-                      <span className="font-semibold text-white mr-2">{post.username}</span>[m
+[31m-                      <span className="text-gray-300 text-sm">{post.caption}</span>[m
+[31m-                    </div>[m
+[31m-                  )}[m
+[31m-                </div>[m
+[32m+[m[32m                  {/* preview comments */}[m
+[32m+[m[32m                  <div className="p-4 space-y-3 bg-street-900">[m
+[32m+[m[32m                    {post.loadingComments ? ([m
+[32m+[m[32m                      <div className="text-center text-gray-500">Chargement...</div>[m
+[32m+[m[32m                    ) : ([m
+[32m+[m[32m                      <>[m
+[32m+[m[32m                        {previewComments.map(comment => {[m
+[32m+[m[32m                          const canDelete = user && ([m
+[32m+[m[32m                            comment.user_id === user.id ||[m
+[32m+[m[32m                            post.user_id === user.id[m
+[32m+[m[32m                          )[m
+ [m
+[31m-                <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-street-900 min-h-0">[m
+[31m-                  {post.loadingComments ? ([m
+[31m-                    <div className="text-center text-gray-500">Chargement...</div>[m
+[31m-                  ) : ([m
+[31m-                    <>[m
+[31m-                      {previewComments.map(comment => {[m
+[31m-                        const canDelete = user && ([m
+[31m-                          comment.user_id === user.id || [m
+[31m-                          post.user_id === user.id[m
+[31m-                        )[m
+[31m-                        [m
+[31m-                        return ([m
+[31m-                          <div key={comment.id} className="flex space-x-3">[m
+[31m-                            <img[m
+[31m-                              src={comment.profiles?.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}[m
+[31m-                              alt={comment.profiles?.username}[m
+[31m-                              className="w-8 h-8 rounded-full border border-street-accent flex-shrink-0"[m
+[31m-                            />[m
+[31m-                            <div className="flex-1">[m
+[31m-                              <div className="flex items-start justify-between">[m
+[31m-                                <div>[m
+[31m-                                  <span className="font-semibold text-white text-sm mr-2">[m
+[31m-                                    {comment.profiles?.username}[m
+[31m-                                  </span>[m
+[31m-                                  <span className="text-gray-300 text-sm">{comment.text}</span>[m
+[32m+[m[32m                          return ([m
+[32m+[m[32m                            <div key={comment.id} className="flex space-x-3">[m
+[32m+[m[32m                              <img[m
+[32m+[m[32m                                src={comment.profiles?.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}[m
+[32m+[m[32m                                alt={comment.profiles?.username}[m
+[32m+[m[32m                                className="w-8 h-8 rounded-full border border-street-accent flex-shrink-0"[m
+[32m+[m[32m                              />[m
+[32m+[m[32m                              <div className="flex-1">[m
+[32m+[m[32m                                <div className="flex items-start justify-between">[m
+[32m+[m[32m                                  <div>[m
+[32m+[m[32m                                    <span className="font-semibold text-white text-sm mr-2">[m
+[32m+[m[32m                                      {comment.profiles?.username}[m
+[32m+[m[32m                                    </span>[m
+[32m+[m[32m                                    <span className="text-gray-300 text-sm">{comment.text}</span>[m
+[32m+[m[32m                                  </div>[m
+[32m+[m[32m                                  {canDelete && ([m
+[32m+[m[32m                                    <button[m
+[32m+[m[32m                                      onClick={() => handleDeleteComment(index, comment.id)}[m
+[32m+[m[32m                                      className="text-red-400 hover:text-red-300 text-xs ml-2"[m
+[32m+[m[32m                                    >[m
+[32m+[m[32m                                      🗑️[m
+[32m+[m[32m                                    </button>[m
+[32m+[m[32m                                  )}[m
+                                 </div>[m
+[31m-                                {canDelete && ([m
+[31m-                                  <button[m
+[31m-                                    onClick={() => handleDeleteComment(index, comment.id)}[m
+[31m-                                    className="text-red-400 hover:text-red-300 text-xs ml-2"[m
+[31m-                                  >[m
+[31m-                                    🗑️[m
+[31m-                                  </button>[m
+[31m-                                )}[m
+                               </div>[m
+                             </div>[m
+[32m+[m[32m                          )[m
+[32m+[m[32m                        })}[m
+[32m+[m
+[32m+[m[32m                        {hasMoreComments && ([m
+[32m+[m[32m                          <button[m
+[32m+[m[32m                            onClick={() => {[m
+[32m+[m[32m                              setShowCommentsModal(index)[m
+[32m+[m[32m                              loadComments(index)[m
+[32m+[m[32m                            }}[m
+[32m+[m[32m                            className="text-gray-400 hover:text-gray-300 text-sm font-semibold transition"[m
+[32m+[m[32m                          >[m
+[32m+[m[32m                            Voir tous les {post.comments_count} commentaires[m
+[32m+[m[32m                          </button>[m
+[32m+[m[32m                        )}[m
+[32m+[m
+[32m+[m[32m                        {post.comments.length === 0 && ([m
+[32m+[m[32m                          <div className="text-center text-gray-500 text-sm py-4">[m
+[32m+[m[32m                            Aucun commentaire[m
+                           </div>[m
+[31m-                        )[m
+[31m-                      })}[m
+[32m+[m[32m                        )}[m
+[32m+[m[32m                      </>[m
+[32m+[m[32m                    )}[m
+[32m+[m[32m                  </div>[m
+ [m
+[31m-                      {hasMoreComments && ([m
+[32m+[m[32m                  {/* add comment */}[m
+[32m+[m[32m                  {user && ([m
+[32m+[m[32m                    <div[m
+[32m+[m[32m                      className="p-4 border-t border-street-700 bg-street-800"[m
+[32m+[m[32m                      style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}[m
+[32m+[m[32m                    >[m
+[32m+[m[32m                      <div className="flex space-x-2 items-center">[m
+[32m+[m[32m                        <input[m
+[32m+[m[32m                          type="text"[m
+[32m+[m[32m                          value={post.newComment}[m
+[32m+[m[32m                          onChange={(e) => updateNewComment(index, e.target.value)}[m
+[32m+[m[32m                          onKeyDown={(e) => e.key === 'Enter' && handleAddComment(index)}[m
+[32m+[m[32m                          placeholder="Ajouter un commentaire..."[m
+[32m+[m[32m                          className="flex-1 px-4 py-2 bg-street-900 border border-street-700 text-white rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-street-accent"[m
+[32m+[m[32m                        />[m
+                         <button[m
+[31m-                          onClick={() => setShowCommentsModal(index)}[m
+[31m-                          className="text-gray-400 hover:text-gray-300 text-sm font-semibold transition"[m
+[32m+[m[32m                          onClick={() => handleAddComment(index)}[m
+[32m+[m[32m                          className="p-2 bg-street-accent text-street-900 rounded-full hover:bg-street-accentHover transition flex-shrink-0"[m
+                         >[m
+[31m-                          Voir tous les {post.comments_count} commentaires[m
+[32m+[m[32m                          <Send size={20} />[m
+                         </button>[m
+[31m-                      )}[m
+[31m-[m
+[31m-                      {post.comments.length === 0 && ([m
+[31m-                        <div className="text-center text-gray-500 text-sm py-4">[m
+[31m-                          Aucun commentaire[m
+[31m-                        </div>[m
+[31m-                      )}[m
+[31m-                    </>[m
+[32m+[m[32m                      </div>[m
+[32m+[m[32m                    </div>[m
+                   )}[m
+                 </div>[m
+[31m-[m
+[31m-                {user && ([m
+[31m-                  <div [m
+[31m-                    className="sticky bottom-0 p-4 border-t border-street-700 bg-street-800 flex-shrink-0"[m
+[31m-                    style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}[m
+[31m-                  >[m
+[31m-                    <div className="flex space-x-2 items-center">[m
+[31m-                      <input[m
+[31m-                        type="text"[m
+[31m-                        value={post.newComment}[m
+[31m-                        onChange={(e) => updateNewComment(index, e.target.value)}[m
+[31m-                        onKeyPress={(e) => e.key === 'Enter' && handleAddComment(index)}[m
+[31m-                        placeholder="Ajouter un commentaire..."[m
+[31m-                        className="flex-1 px-4 py-2 bg-street-900 border border-street-700 text-white rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-street-accent"[m
+[31m-                      />[m
+[31m-                      <button[m
+[31m-                        onClick={() => handleAddComment(index)}[m
+[31m-                        className="p-2 bg-street-accent text-street-900 rounded-full hover:bg-street-accentHover transition flex-shrink-0"[m
+[31m-                      >[m
+[31m-                        <Send size={20} />[m
+[31m-                      </button>[m
+[31m-                    </div>[m
+[31m-                  </div>[m
+[31m-                )}[m
+[31m-              </div>[m
+[31m-            </div>[m
+[31m-          )[m
+[31m-        })}[m
+[32m+[m[32m              )[m
+[32m+[m[32m            })}[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m        </div>[m
+       </div>[m
+ [m
+       {showCommentsModal !== null && ([m
+[1mdiff --git a/components/Profile.js b/components/Profile.js[m
+[1mindex 3e64b6e..ce3a49b 100644[m
+[1m--- a/components/Profile.js[m
+[1m+++ b/components/Profile.js[m
+[36m@@ -1,526 +1,474 @@[m
+[31m-import { useState, useEffect, useRef } from 'react'[m
+[32m+[m[32m'use client'[m
+[32m+[m
+[32m+[m[32mimport { useEffect, useMemo, useRef, useState } from 'react'[m
+ import { useRouter } from 'next/navigation'[m
+ import { useAuth } from '../contexts/AuthContext'[m
+[31m-import { getPosts, getProfile, updateProfile, uploadAvatar, followUser, unfollowUser, isFollowing } from '../lib/supabase'[m
+[32m+[m[32mimport {[m
+[32m+[m[32m  getPosts,[m
+[32m+[m[32m  getProfile,[m
+[32m+[m[32m  updateProfile,[m
+[32m+[m[32m  uploadAvatar,[m
+[32m+[m[32m  followUser,[m
+[32m+[m[32m  unfollowUser,[m
+[32m+[m[32m  isFollowing[m
+[32m+[m[32m} from '../lib/supabase'[m
+ import { supabase } from '../lib/supabase'[m
+[31m-import PostModal from './PostModal'[m
+[31m-import { MoreVertical, MessageCircle } from 'lucide-react'[m
+[31m-[m
+[31m-export default function Profile({ viewUserId }) {[m
+[32m+[m[32mimport {[m
+[32m+[m[32m  ArrowLeft,[m
+[32m+[m[32m  MoreVertical,[m
+[32m+[m[32m  MessageCircle,[m
+[32m+[m[32m  ChevronDown,[m
+[32m+[m[32m  UserPlus,[m
+[32m+[m[32m  UserCheck,[m
+[32m+[m[32m  LogOut[m
+[32m+[m[32m} from 'lucide-react'[m
+[32m+[m
+[32m+[m[32mexport default function Profile({[m
+[32m+[m[32m  viewUserId,[m
+[32m+[m[32m  onBack,[m
+[32m+[m[32m  returnTab = 'feed',[m
+[32m+[m[32m  onUserClick,[m
+[32m+[m[32m  onOpenConversation,[m
+[32m+[m[32m  onOpenMessages[m
+[32m+[m[32m}) {[m
+   const router = useRouter()[m
+   const { user, signOut } = useAuth()[m
+[32m+[m
+   const profileUserId = viewUserId || user?.id[m
+[31m-  [m
+[32m+[m
+   const [profile, setProfile] = useState(null)[m
+   const [posts, setPosts] = useState([])[m
+   const [loading, setLoading] = useState(true)[m
+   const [error, setError] = useState(null)[m
+[31m-  [m
+[32m+[m
+[32m+[m[32m  // counts[m
+[32m+[m[32m  const [followersCount, setFollowersCount] = useState(0)[m
+[32m+[m[32m  const [followingCount, setFollowingCount] = useState(0)[m
+[32m+[m
+[32m+[m[32m  // edit[m
+   const [isEditing, setIsEditing] = useState(false)[m
+   const [editedBio, setEditedBio] = useState('')[m
+   const [editedUsername, setEditedUsername] = useState('')[m
+   const [newAvatar, setNewAvatar] = useState(null)[m
+   const [updating, setUpdating] = useState(false)[m
+ [m
+[32m+[m[32m  // follow state[m
+   const [isFollowingUser, setIsFollowingUser] = useState(false)[m
+   const [followLoading, setFollowLoading] = useState(false)[m
+   const [isMutualFollow, setIsMutualFollow] = useState(false)[m
+ [m
+[31m-  const [selectedPostIndex, setSelectedPostIndex] = useState(null)[m
+[31m-  const [deleting, setDeleting] = useState(false)[m
+[32m+[m[32m  // menu ⋮ (profil perso)[m
+   const [showMoreMenu, setShowMoreMenu] = useState(false)[m
+[31m-  const [creatingConversation, setCreatingConversation] = useState(false)[m
+   const moreMenuRef = useRef(null)[m
+ [m
+[32m+[m[32m  // menu "Suivi(e)" (profil autre)[m
+[32m+[m[32m  const [showFollowingMenu, setShowFollowingMenu] = useState(false)[m
+[32m+[m[32m  const followingMenuRef = useRef(null)[m
+[32m+[m
+[32m+[m[32m  const isMyProfile = useMemo(() => user?.id && profile?.id && user.id === profile.id, [user, profile])[m
+[32m+[m
+   useEffect(() => {[m
+     if (profileUserId) {[m
+[31m-      loadProfile()[m
+[31m-      loadUserPosts()[m
+[32m+[m[32m      loadAll()[m
+     }[m
+[32m+[m[32m    // eslint-disable-next-line react-hooks/exhaustive-deps[m
+   }, [profileUserId])[m
+ [m
+   useEffect(() => {[m
+     if (user && profile && user.id !== profile.id) {[m
+       checkFollowStatus()[m
+     }[m
+[32m+[m[32m    // eslint-disable-next-line react-hooks/exhaustive-deps[m
+   }, [user, profile])[m
+ [m
+   useEffect(() => {[m
+[31m-    function handleClickOutside(event) {[m
+[31m-      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {[m
+[31m-        setShowMoreMenu(false)[m
+[31m-      }[m
+[31m-    }[m
+[31m-[m
+[31m-    if (showMoreMenu) {[m
+[31m-      document.addEventListener('mousedown', handleClickOutside)[m
+[31m-      return () => document.removeEventListener('mousedown', handleClickOutside)[m
+[32m+[m[32m    function handleClickOutside(e) {[m
+[32m+[m[32m      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) setShowMoreMenu(false)[m
+[32m+[m[32m      if (followingMenuRef.current && !followingMenuRef.current.contains(e.target)) setShowFollowingMenu(false)[m
+     }[m
+[31m-  }, [showMoreMenu])[m
+ [m
+[31m-  async function checkFollowStatus() {[m
+[31m-    const following = await isFollowing(user.id, profile.id)[m
+[31m-    setIsFollowingUser(following)[m
+[31m-    [m
+[31m-    const followingBack = await isFollowing(profile.id, user.id)[m
+[31m-    setIsMutualFollow(following && followingBack)[m
+[31m-  }[m
+[31m-[m
+[31m-  async function handleFollow() {[m
+[31m-    if (!user || !profile) return[m
+[31m-    [m
+[31m-    setFollowLoading(true)[m
+[31m-    const success = isFollowingUser [m
+[31m-      ? await unfollowUser(profile.id, user.id)[m
+[31m-      : await followUser(profile.id, user.id)[m
+[31m-    [m
+[31m-    if (success) {[m
+[31m-      setIsFollowingUser(!isFollowingUser)[m
+[31m-      loadProfile()[m
+[31m-      checkFollowStatus()[m
+[31m-    }[m
+[31m-    setFollowLoading(false)[m
+[31m-  }[m
+[32m+[m[32m    document.addEventListener('mousedown', handleClickOutside)[m
+[32m+[m[32m    return () => document.removeEventListener('mousedown', handleClickOutside)[m
+[32m+[m[32m  }, [])[m
+ [m
+[31m-  async function loadProfile() {[m
+[32m+[m[32m  async function loadAll() {[m
+     try {[m
+       setLoading(true)[m
+       setError(null)[m
+[32m+[m
+       const data = await getProfile(profileUserId)[m
+[31m-      [m
+[31m-      if (data) {[m
+[31m-        setProfile(data)[m
+[31m-        setEditedBio(data.bio || '')[m
+[31m-        setEditedUsername(data.username || '')[m
+[31m-      } else {[m
+[31m-        setError('Profil introuvable')[m
+[31m-      }[m
+[31m-    } catch (err) {[m
+[31m-      console.error('Erreur chargement profil:', err)[m
+[32m+[m[32m      if (!data) throw new Error('Profil introuvable')[m
+[32m+[m
+[32m+[m[32m      setProfile(data)[m
+[32m+[m[32m      setEditedBio(data.bio || '')[m
+[32m+[m[32m      setEditedUsername(data.username || '')[m
+[32m+[m
+[32m+[m[32m      await Promise.all([loadUserPosts(profileUserId), loadFollowCounts(profileUserId)])[m
+[32m+[m[32m    } catch (e) {[m
+[32m+[m[32m      console.error(e)[m
+       setError('Impossible de charger le profil')[m
+     } finally {[m
+       setLoading(false)[m
+     }[m
+   }[m
+ [m
+[31m-  async function loadUserPosts() {[m
+[32m+[m[32m  async function loadUserPosts(uid) {[m
+     try {[m
+[31m-      const data = await getPosts(profileUserId, user?.id)[m
+[31m-      setPosts(data)[m
+[31m-    } catch (err) {[m
+[31m-      console.error('Erreur chargement posts:', err)[m
+[32m+[m[32m      const data = await getPosts(uid, user?.id)[m
+[32m+[m[32m      setPosts(data || [])[m
+[32m+[m[32m    } catch (e) {[m
+[32m+[m[32m      console.error(e)[m
+[32m+[m[32m      setPosts([])[m
+     }[m
+   }[m
+ [m
+[31m-  async function handleAvatarChange(e) {[m
+[31m-    const file = e.target.files?.[0][m
+[31m-    if (file) {[m
+[31m-      if (file.size > 5 * 1024 * 1024) {[m
+[31m-        alert('Le fichier est trop volumineux (max 5MB)')[m
+[31m-        return[m
+[31m-      }[m
+[31m-      setNewAvatar(file)[m
+[32m+[m[32m  async function loadFollowCounts(uid) {[m
+[32m+[m[32m    try {[m
+[32m+[m[32m      const [followersRes, followingRes] = await Promise.all([[m
+[32m+[m[32m        supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', uid),[m
+[32m+[m[32m        supabase.from('follows').select('id', { count: 'exact', head: true }).eq('follower_id', uid)[m
+[32m+[m[32m      ])[m
+[32m+[m
+[32m+[m[32m      setFollowersCount(followersRes?.count || 0)[m
+[32m+[m[32m      setFollowingCount(followingRes?.count || 0)[m
+[32m+[m[32m    } catch (e) {[m
+[32m+[m[32m      console.error('loadFollowCounts error:', e)[m
+[32m+[m[32m      setFollowersCount(0)[m
+[32m+[m[32m      setFollowingCount(0)[m
+     }[m
+   }[m
+ [m
+[31m-  async function handleSaveProfile() {[m
+[32m+[m[32m  async function checkFollowStatus() {[m
+[32m+[m[32m    const following = await isFollowing(user.id, profile.id)[m
+[32m+[m[32m    const followingBack = await isFollowing(profile.id, user.id)[m
+[32m+[m[32m    setIsFollowingUser(!!following)[m
+[32m+[m[32m    setIsMutualFollow(!!following && !!followingBack)[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  async function handleFollow() {[m
+     if (!user || !profile) return[m
+[32m+[m[32m    if (followLoading) return[m
+[32m+[m
+[32m+[m[32m    setFollowLoading(true)[m
+[32m+[m[32m    try {[m
+[32m+[m[32m      if (isFollowingUser) {[m
+[32m+[m[32m        await unfollowUser(profile.id, user.id)[m
+[32m+[m[32m        setIsFollowingUser(false)[m
+[32m+[m[32m      } else {[m
+[32m+[m[32m        await followUser(profile.id, user.id)[m
+[32m+[m[32m        setIsFollowingUser(true)[m
+[32m+[m[32m      }[m
+[32m+[m[32m      await checkFollowStatus()[m
+[32m+[m[32m      await loadFollowCounts(profile.id)[m
+[32m+[m[32m    } finally {[m
+[32m+[m[32m      setFollowLoading(false)[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  async function handleUnfollowFromMenu() {[m
+[32m+[m[32m    setShowFollowingMenu(false)[m
+[32m+[m[32m    if (!isFollowingUser) return[m
+[32m+[m[32m    await handleFollow() // toggles[m
+[32m+[m[32m  }[m
+ [m
+[32m+[m[32m  async function handleSaveProfile() {[m
+[32m+[m[32m    if (!user) return[m
+     setUpdating(true)[m
+[31m-    setError(null)[m
+ [m
+     try {[m
+       let avatarUrl = profile.avatar_url[m
+[32m+[m[32m      if (newAvatar) avatarUrl = await uploadAvatar(newAvatar, user.id)[m
+ [m
+[31m-      if (newAvatar) {[m
+[31m-        const uploadedUrl = await uploadAvatar(newAvatar, user.id)[m
+[31m-        if (uploadedUrl) {[m
+[31m-          avatarUrl = uploadedUrl[m
+[31m-        } else {[m
+[31m-          throw new Error('Échec de l\'upload de l\'avatar')[m
+[31m-        }[m
+[31m-      }[m
+[31m-[m
+[31m-      const updates = {[m
+[31m-        username: editedUsername.trim() || profile.username,[m
+[31m-        bio: editedBio.trim(),[m
+[32m+[m[32m      const updated = await updateProfile(user.id, {[m
+[32m+[m[32m        username: editedUsername,[m
+[32m+[m[32m        bio: editedBio,[m
+         avatar_url: avatarUrl[m
+[31m-      }[m
+[31m-[m
+[31m-      const updated = await updateProfile(user.id, updates)[m
+[32m+[m[32m      })[m
+ [m
+       if (updated) {[m
+         setProfile(updated)[m
+         setIsEditing(false)[m
+         setNewAvatar(null)[m
+[31m-      } else {[m
+[31m-        throw new Error('Échec de la mise à jour du profil')[m
+       }[m
+[31m-    } catch (err) {[m
+[31m-      console.error('Erreur sauvegarde profil:', err)[m
+[31m-      setError('Erreur lors de la sauvegarde du profil')[m
+     } finally {[m
+       setUpdating(false)[m
+     }[m
+   }[m
+ [m
+   async function handleLogout() {[m
+[32m+[m[32m    setShowMoreMenu(false)[m
+     await signOut()[m
+     router.push('/auth')[m
+   }[m
+ [m
+[31m-  async function handleDeleteAccount() {[m
+[31m-    const confirmed = confirm([m
+[31m-      'Êtes-vous sûr de vouloir supprimer votre compte ? Cette action est irréversible.'[m
+[31m-    )[m
+[31m-    [m
+[31m-    if (!confirmed) return[m
+[31m-[m
+[31m-    try {[m
+[31m-      setDeleting(true)[m
+[31m-[m
+[31m-      const { error: dbError } = await supabase[m
+[31m-        .from('profiles')[m
+[31m-        .delete()[m
+[31m-        .eq('id', user.id)[m
+[31m-[m
+[31m-      if (dbError) throw dbError[m
+[31m-[m
+[31m-      const { error: authError } = await supabase.auth.admin.deleteUser(user.id)[m
+[31m-      [m
+[31m-      if (authError) throw authError[m
+[31m-[m
+[31m-      await signOut()[m
+[31m-      router.push('/auth')[m
+[31m-    } catch (err) {[m
+[31m-      console.error('Erreur suppression compte:', err)[m
+[31m-      alert('Erreur lors de la suppression du compte. Veuillez réessayer.')[m
+[31m-      setDeleting(false)[m
+[31m-    }[m
+[31m-  }[m
+[31m-[m
+[31m-  function handlePostClick(index) {[m
+[31m-    setSelectedPostIndex(index)[m
+[31m-  }[m
+[31m-[m
+[31m-  function handleDeletePost(postId) {[m
+[31m-    setPosts(posts.filter(p => p.id !== postId))[m
+[31m-    setSelectedPostIndex(null)[m
+[31m-  }[m
+[31m-[m
+   async function handleMessage() {[m
+[31m-    if (creatingConversation) {[m
+[31m-      console.warn('⚠️ Conversation creation already in progress')[m
+[31m-      return[m
+[31m-    }[m
+[32m+[m[32m    if (!isMutualFollow || !profile?.id) return[m
+ [m
+[31m-    if (!user) {[m
+[31m-      console.error('❌ User not authenticated')[m
+[31m-      router.push('/auth')[m
+[32m+[m[32m    const { data, error } = await supabase.rpc('create_or_get_dm', {[m
+[32m+[m[32m      other_user_id: profile.id[m
+[32m+[m[32m    })[m
+[32m+[m[32m    if (error) {[m
+[32m+[m[32m      console.error('create_or_get_dm error:', error)[m
+       return[m
+     }[m
+ [m
+[31m-    if (!profile) {[m
+[31m-      console.error('❌ Profile not loaded')[m
+[31m-      return[m
+[31m-    }[m
+[32m+[m[32m    const conversationId = typeof data === 'string' ? data : data?.conversation_id[m
+[32m+[m[32m    if (!conversationId) return[m
+ [m
+[31m-    if (user.id === profile.id) {[m
+[31m-      console.error('❌ Cannot message yourself')[m
+[31m-      alert('Vous ne pouvez pas vous envoyer un message à vous-même')[m
+[32m+[m[32m    // ✅ Si tu veux rester en SPA (inbox) plutôt qu'une route dédiée :[m
+[32m+[m[32m    if (onOpenConversation) {[m
+[32m+[m[32m      onOpenConversation(conversationId)[m
+       return[m
+     }[m
+ [m
+[31m-    console.log('💬 Opening DM with:', profile.username, '(UUID:', profile.id, ')')[m
+[31m-    setCreatingConversation(true)[m
+[31m-[m
+[31m-    try {[m
+[31m-      const { data, error } = await supabase.rpc('create_or_get_dm', {[m
+[31m-        other_user_id: profile.id[m
+[31m-      })[m
+[31m-[m
+[31m-      if (error) {[m
+[31m-        console.error('❌ RPC create_or_get_dm error:', error)[m
+[31m-        alert(`Erreur: ${error.message}`)[m
+[31m-        return[m
+[31m-      }[m
+[31m-[m
+[31m-      if (data == null) {[m
+[31m-        console.error('❌ RPC returned null/undefined')[m
+[31m-        alert('Impossible de créer la conversation')[m
+[31m-        return[m
+[31m-      }[m
+[31m-[m
+[31m-      const conversationId = typeof data === 'string' [m
+[31m-        ? data [m
+[31m-        : data?.conversation_id[m
+[31m-[m
+[31m-      if (!conversationId) {[m
+[31m-        console.error('❌ conversationId missing from response:', data)[m
+[31m-        alert('ID de conversation manquant')[m
+[31m-        return[m
+[31m-      }[m
+[31m-[m
+[31m-      console.log('✅ Conversation ready:', conversationId)[m
+[31m-[m
+[31m-      // ✅ PATCH MINIMAL: use query param since Messages page reads searchParams.get('conversation')[m
+[31m-      router.push(`/messages?conversation=${conversationId}`)[m
+[31m-[m
+[31m-    } catch (err) {[m
+[31m-      console.error('💥 Exception calling create_or_get_dm:', err)[m
+[31m-      alert('Erreur lors de l\'ouverture de la conversation')[m
+[31m-    } finally {[m
+[31m-      setCreatingConversation(false)[m
+[31m-    }[m
+[32m+[m[32m    // fallback[m
+[32m+[m[32m    router.push(`/messages/${conversationId}`)[m
+   }[m
+ [m
+[31m-  if (loading) {[m
+[31m-    return ([m
+[31m-      <div className="flex justify-center items-center h-64">[m
+[31m-        <div className="text-gray-500">Chargement du profil...</div>[m
+[31m-      </div>[m
+[31m-    )[m
+[32m+[m[32m  // ✅ OUVRIR LE POST CLIQUÉ EN MODE FEED (Instagram) + garder l'ID du profil pour le retour[m
+[32m+[m[32m  function openPost(index) {[m
+[32m+[m[32m    const post = posts[index][m
+[32m+[m[32m    if (!post) return[m
+[32m+[m[32m    router.push(`/p/${post.id}?u=${profileUserId}`)[m
+   }[m
+ [m
+[31m-  if (error && !profile) {[m
+[31m-    return ([m
+[31m-      <div className="flex flex-col justify-center items-center h-64 space-y-4">[m
+[31m-        <div className="text-red-500">{error}</div>[m
+[31m-        <button [m
+[31m-          onClick={loadProfile}[m
+[31m-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"[m
+[31m-        >[m
+[31m-          Réessayer[m
+[31m-        </button>[m
+[31m-      </div>[m
+[31m-    )[m
+[32m+[m[32m  function goFollowers() {[m
+[32m+[m[32m    router.push(`/followers?u=${encodeURIComponent(profileUserId || '')}`)[m
+   }[m
+ [m
+[31m-  if (!profile) {[m
+[31m-    return ([m
+[31m-      <div className="text-center text-gray-500 py-12">[m
+[31m-        Profil introuvable[m
+[31m-      </div>[m
+[31m-    )[m
+[32m+[m[32m  function goFollowing() {[m
+[32m+[m[32m    router.push(`/following?u=${encodeURIComponent(profileUserId || '')}`)[m
+   }[m
+ [m
+[31m-  const isMyProfile = user && profile && user.id === profile.id[m
+[32m+[m[32m  if (loading) return <div className="text-center text-gray-400 py-20">Chargement…</div>[m
+[32m+[m[32m  if (error || !profile) return <div className="text-center text-red-500 py-20">{error}</div>[m
+ [m
+[31m-  return ([m
+[31m-    <div className="max-w-4xl mx-auto p-4 space-y-6 pb-24">[m
+[31m-      <div className="bg-street-800 border border-street-700 rounded-xl shadow-lg p-6 relative">[m
+[31m-        {isMyProfile && !isEditing && ([m
+[31m-          <div className="absolute top-4 right-4" ref={moreMenuRef}>[m
+[31m-            <button[m
+[31m-              onClick={() => setShowMoreMenu(!showMoreMenu)}[m
+[31m-              className="p-2 text-gray-400 hover:text-white hover:bg-street-700 rounded-lg transition"[m
+[31m-            >[m
+[31m-              <MoreVertical size={20} />[m
+[31m-            </button>[m
+[32m+[m[32m  const postsCount = posts?.length || 0[m
+ [m
+[31m-            {showMoreMenu && ([m
+[31m-              <div className="absolute right-0 mt-2 w-56 bg-street-800 border border-street-700 rounded-lg shadow-xl z-10 overflow-hidden">[m
+[31m-                <button[m
+[31m-                  onClick={handleLogout}[m
+[31m-                  className="w-full text-left px-4 py-3 text-white hover:bg-street-700 transition text-sm"[m
+[31m-                >[m
+[31m-                  Se déconnecter[m
+[31m-                </button>[m
+[31m-                <button[m
+[31m-                  onClick={handleDeleteAccount}[m
+[31m-                  disabled={deleting}[m
+[31m-                  className="w-full text-left px-4 py-3 text-red-400 hover:bg-street-700 transition text-sm disabled:opacity-50"[m
+[31m-                >[m
+[31m-                  {deleting ? 'Suppression...' : 'Supprimer mon compte'}[m
+[31m-                </button>[m
+[31m-              </div>[m
+[32m+[m[32m  return ([m
+[32m+[m[32m    <div className="max-w-md mx-auto pb-24">[m
+[32m+[m[32m      {/* TOP BAR */}[m
+[32m+[m[32m      <div className="sticky top-0 z-30 bg-street-800/90 backdrop-blur border-b border-street-700">[m
+[32m+[m[32m        <div className="px-4 py-3 flex items-center justify-between">[m
+[32m+[m[32m          <div className="flex items-center gap-3">[m
+[32m+[m[32m            {/* Flèche retour uniquement quand on visite quelqu’un */}[m
+[32m+[m[32m            {!isMyProfile && ([m
+[32m+[m[32m              <button[m
+[32m+[m[32m                onClick={() => (onBack ? onBack() : router.push(`/?tab=${encodeURIComponent(returnTab || 'feed')}`))}[m
+[32m+[m[32m                className="p-2 rounded-lg hover:bg-street-700 text-white"[m
+[32m+[m[32m                aria-label="Retour"[m
+[32m+[m[32m              >[m
+[32m+[m[32m                <ArrowLeft size={20} />[m
+[32m+[m[32m              </button>[m
+             )}[m
+[32m+[m
+[32m+[m[32m            <div className="text-white font-bold">{profile.username || 'Profil'}</div>[m
+           </div>[m
+[31m-        )}[m
+ [m
+[31m-        <div className="flex items-start space-x-6">[m
+[31m-          <div className="flex flex-col items-center space-y-2 flex-shrink-0">[m
+[31m-            <div className="w-24 h-24 flex-shrink-0">[m
+[31m-              <img[m
+[31m-                src={[m
+[31m-                  newAvatar [m
+[31m-                    ? URL.createObjectURL(newAvatar)[m
+[31m-                    : profile.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'[m
+[31m-                }[m
+[31m-                alt={profile.username}[m
+[31m-                className="w-full h-full rounded-full object-cover border-4 border-street-accent shadow-lg"[m
+[31m-              />[m
+[32m+[m[32m          {/* ⋮ menu (profil perso) */}[m
+[32m+[m[32m          {isMyProfile && ([m
+[32m+[m[32m            <div className="relative" ref={moreMenuRef}>[m
+[32m+[m[32m              <button[m
+[32m+[m[32m                onClick={() => setShowMoreMenu((v) => !v)}[m
+[32m+[m[32m                className="p-2 rounded-lg hover:bg-street-700 text-gray-200"[m
+[32m+[m[32m                aria-label="Menu"[m
+[32m+[m[32m              >[m
+[32m+[m[32m                <MoreVertical size={20} />[m
+[32m+[m[32m              </button>[m
+[32m+[m
+[32m+[m[32m              {showMoreMenu && ([m
+[32m+[m[32m                <div className="absolute right-0 mt-2 w-56 bg-street-800 border border-street-700 rounded-xl overflow-hidden shadow-xl">[m
+[32m+[m[32m                  <button[m
+[32m+[m[32m                    onClick={handleLogout}[m
+[32m+[m[32m                    className="w-full flex items-center gap-2 px-4 py-3 text-white hover:bg-street-700"[m
+[32m+[m[32m                  >[m
+[32m+[m[32m                    <LogOut size={16} />[m
+[32m+[m[32m                    Se déconnecter[m
+[32m+[m[32m                  </button>[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m              )}[m
+             </div>[m
+[32m+[m[32m          )}[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m      </div>[m
+[32m+[m
+[32m+[m[32m      {/* HEADER PROFILE */}[m
+[32m+[m[32m      <div className="px-4 pt-5">[m
+[32m+[m[32m        <div className="flex items-center gap-4">[m
+[32m+[m[32m          <div className="relative">[m
+[32m+[m[32m            <img[m
+[32m+[m[32m              src={profile.avatar_url || 'https://placehold.co/120'}[m
+[32m+[m[32m              className="w-20 h-20 rounded-full border-2 border-street-accent object-cover"[m
+[32m+[m[32m              alt="avatar"[m
+[32m+[m[32m            />[m
+             {isMyProfile && isEditing && ([m
+[31m-              <label className="cursor-pointer text-xs text-street-accent hover:text-street-accentHover transition">[m
+[31m-                <span>Changer la photo</span>[m
+[32m+[m[32m              <label className="absolute -bottom-2 -right-2 bg-street-accent text-black text-xs font-bold px-2 py-1 rounded-lg cursor-pointer">[m
+[32m+[m[32m                Photo[m
+                 <input[m
+                   type="file"[m
+[31m-                  accept="image/*"[m
+[31m-                  onChange={handleAvatarChange}[m
+                   className="hidden"[m
+[32m+[m[32m                  accept="image/*"[m
+[32m+[m[32m                  onChange={(e) => setNewAvatar(e.target.files?.[0] || null)}[m
+                 />[m
+               </label>[m
+             )}[m
+           </div>[m
+ [m
+[31m-          <div className="flex-1 space-y-4">[m
+[31m-            {isEditing ? ([m
+[31m-              <div className="space-y-4">[m
+[31m-                <div>[m
+[31m-                  <label className="block text-sm font-semibold text-white mb-2">[m
+[31m-                    Nom d'utilisateur[m
+[31m-                  </label>[m
+[31m-                  <input[m
+[31m-                    type="text"[m
+[31m-                    value={editedUsername}[m
+[31m-                    onChange={(e) => setEditedUsername(e.target.value)}[m
+[31m-                    className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-street-accent"[m
+[31m-                  />[m
+[31m-                </div>[m
+[32m+[m[32m          {/* STATS */}[m
+[32m+[m[32m          <div className="flex-1 flex justify-around text-center">[m
+[32m+[m[32m            <div>[m
+[32m+[m[32m              <div className="text-white font-bold">{postsCount}</div>[m
+[32m+[m[32m              <div className="text-gray-400 text-xs">publications</div>[m
+[32m+[m[32m            </div>[m
+ [m
+[31m-                <div>[m
+[31m-                  <label className="block text-sm font-semibold text-white mb-2">[m
+[31m-                    Bio[m
+[31m-                  </label>[m
+[31m-                  <textarea[m
+[31m-                    value={editedBio}[m
+[31m-                    onChange={(e) => setEditedBio(e.target.value)}[m
+[31m-                    rows={3}[m
+[31m-                    className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-street-accent resize-none"[m
+[31m-                  />[m
+[31m-                </div>[m
+[32m+[m[32m            <button onClick={goFollowers} className="focus:outline-none">[m
+[32m+[m[32m              <div className="text-white font-bold">{followersCount}</div>[m
+[32m+[m[32m              <div className="text-gray-400 text-xs">abonnés</div>[m
+[32m+[m[32m            </button>[m
+ [m
+[31m-                <div className="flex space-x-2">[m
+[31m-                  <button[m
+[31m-                    onClick={handleSaveProfile}[m
+[31m-                    disabled={updating}[m
+[31m-                    className="px-4 py-2 bg-street-accent text-street-900 rounded font-bold hover:bg-street-accentHover transition disabled:opacity-50"[m
+[31m-                  >[m
+[31m-                    {updating ? 'Enregistrement...' : 'Enregistrer'}[m
+[31m-                  </button>[m
+[31m-                  <button[m
+[31m-                    onClick={() => {[m
+[31m-                      setIsEditing(false)[m
+[31m-                      setEditedBio(profile.bio || '')[m
+[31m-                      setEditedUsername(profile.username || '')[m
+[31m-                      setNewAvatar(null)[m
+[31m-                    }}[m
+[31m-                    className="px-4 py-2 bg-street-700 text-white rounded hover:bg-street-600 transition"[m
+[31m-                  >[m
+[31m-                    Annuler[m
+[31m-                  </button>[m
+[31m-                </div>[m
+[31m-              </div>[m
+[31m-            ) : ([m
+[31m-              <>[m
+[31m-                <div>[m
+[31m-                  <h1 className="text-2xl font-bold text-white">{profile.username}</h1>[m
+[31m-                  <p className="text-gray-500">@{profile.username}</p>[m
+[31m-                </div>[m
+[32m+[m[32m            <button onClick={goFollowing} className="focus:outline-none">[m
+[32m+[m[32m              <div className="text-white font-bold">{followingCount}</div>[m
+[32m+[m[32m              <div className="text-gray-400 text-xs">suivis</div>[m
+[32m+[m[32m            </button>[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m        </div>[m
+ [m
+[31m-                <div className="flex space-x-6 text-sm">[m
+[31m-                  <div>[m
+[31m-                    <span className="font-semibold text-street-accent">{posts.length}</span>[m
+[31m-                    <span className="text-gray-400 ml-1">posts</span>[m
+[31m-                  </div>[m
+[31m-                  <div>[m
+[31m-                    <span className="font-semibold text-street-accent">{profile.followers_count || 0}</span>[m
+[31m-                    <span className="text-gray-400 ml-1">abonnés</span>[m
+[31m-                  </div>[m
+[31m-                  <div>[m
+[31m-                    <span className="font-semibold text-street-accent">{profile.following_count || 0}</span>[m
+[31m-                    <span className="text-gray-400 ml-1">abonnements</span>[m
+[31m-                  </div>[m
+[31m-                </div>[m
+[32m+[m[32m        {/* NAME + BIO */}[m
+[32m+[m[32m        <div className="mt-4">[m
+[32m+[m[32m          {!isEditing ? ([m
+[32m+[m[32m            <>[m
+[32m+[m[32m              <div className="text-white font-semibold">{profile.username}</div>[m
+[32m+[m[32m              <div className="text-gray-400 text-sm whitespace-pre-line">{profile.bio || 'Aucune bio'}</div>[m
+[32m+[m[32m            </>[m
+[32m+[m[32m          ) : ([m
+[32m+[m[32m            <div className="space-y-3">[m
+[32m+[m[32m              <input[m
+[32m+[m[32m                value={editedUsername}[m
+[32m+[m[32m                onChange={(e) => setEditedUsername(e.target.value)}[m
+[32m+[m[32m                className="w-full bg-street-900 border border-street-700 rounded-xl px-3 py-2 text-white outline-none"[m
+[32m+[m[32m                placeholder="Pseudo"[m
+[32m+[m[32m              />[m
+[32m+[m[32m              <textarea[m
+[32m+[m[32m                value={editedBio}[m
+[32m+[m[32m                onChange={(e) => setEditedBio(e.target.value)}[m
+[32m+[m[32m                className="w-full min-h-[90px] bg-street-900 border border-street-700 rounded-xl px-3 py-2 text-white outline-none"[m
+[32m+[m[32m                placeholder="Bio"[m
+[32m+[m[32m              />[m
+[32m+[m[32m              <div className="flex gap-2">[m
+[32m+[m[32m                <button[m
+[32m+[m[32m                  onClick={handleSaveProfile}[m
+[32m+[m[32m                  disabled={updating}[m
+[32m+[m[32m                  className="flex-1 bg-street-accent text-black font-bold py-2 rounded-xl disabled:opacity-50"[m
+[32m+[m[32m                >[m
+[32m+[m[32m                  {updating ? 'Enregistrement…' : 'Enregistrer'}[m
+[32m+[m[32m                </button>[m
+[32m+[m[32m                <button[m
+[32m+[m[32m                  onClick={() => {[m
+[32m+[m[32m                    setIsEditing(false)[m
+[32m+[m[32m                    setNewAvatar(null)[m
+[32m+[m[32m                    setEditedBio(profile.bio || '')[m
+[32m+[m[32m                    setEditedUsername(profile.username || '')[m
+[32m+[m[32m                  }}[m
+[32m+[m[32m                  className="flex-1 bg-street-800 text-white font-bold py-2 rounded-xl"[m
+[32m+[m[32m                >[m
+[32m+[m[32m                  Annuler[m
+[32m+[m[32m                </button>[m
+[32m+[m[32m              </div>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m          )}[m
+[32m+[m[32m        </div>[m
+ [m
+[31m-                <div className="space-y-2">[m
+[31m-                  <p className="text-sm text-gray-300">{profile.bio || 'Aucune bio'}</p>[m
+[31m-                  [m
+[31m-                  {isMyProfile ? ([m
+[32m+[m[32m        {/* ACTION BUTTONS */}[m
+[32m+[m[32m        {!isEditing && ([m
+[32m+[m[32m          <div className="mt-4">[m
+[32m+[m[32m            {isMyProfile ? ([m
+[32m+[m[32m              <button[m
+[32m+[m[32m                onClick={() => setIsEditing(true)}[m
+[32m+[m[32m                className="w-full bg-street-800 border border-street-700 text-white font-bold py-2 rounded-xl"[m
+[32m+[m[32m              >[m
+[32m+[m[32m                Modifier le profil[m
+[32m+[m[32m              </button>[m
+[32m+[m[32m            ) : ([m
+[32m+[m[32m              <div className="flex gap-2">[m
+[32m+[m[32m                {/* Bouton Suivre / Suivi(e) avec menu liste */}[m
+[32m+[m[32m                <div className="relative flex-1" ref={followingMenuRef}>[m
+[32m+[m[32m                  {!isFollowingUser ? ([m
+                     <button[m
+[31m-                      onClick={() => setIsEditing(true)}[m
+[31m-                      className="text-sm text-street-accent hover:text-street-accentHover font-semibold transition"[m
+[32m+[m[32m                      onClick={handleFollow}[m
+[32m+[m[32m                      disabled={followLoading}[m
+[32m+[m[32m                      className="w-full bg-street-accent text-black font-bold py-2 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"[m
+                     >[m
+[31m-                      Modifier le profil[m
+[32m+[m[32m                      <UserPlus size={18} />[m
+[32m+[m[32m                      Suivre[m
+                     </button>[m
+                   ) : ([m
+[31m-                    <div className="flex gap-2">[m
+[32m+[m[32m                    <button[m
+[32m+[m[32m                      onClick={() => setShowFollowingMenu((v) => !v)}[m
+[32m+[m[32m                      disabled={followLoading}[m
+[32m+[m[32m                      className="w-full bg-street-800 border border-street-700 text-white font-bold py-2 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"[m
+[32m+[m[32m                    >[m
+[32m+[m[32m                      <UserCheck size={18} />[m
+[32m+[m[32m                      Suivi(e)[m
+[32m+[m[32m                      <ChevronDown size={16} />[m
+[32m+[m[32m                    </button>[m
+[32m+[m[32m                  )}[m
+[32m+[m
+[32m+[m[32m                  {showFollowingMenu && ([m
+[32m+[m[32m                    <div className="absolute top-[48px] left-0 right-0 bg-street-800 border border-street-700 rounded-xl overflow-hidden shadow-xl z-40">[m
+                       <button[m
+[31m-                        onClick={handleFollow}[m
+[31m-                        disabled={followLoading}[m
+[31m-                        className={`flex-1 px-6 py-2 rounded-lg font-bold transition ${[m
+[31m-                          isFollowingUser[m
+[31m-                            ? 'bg-street-700 text-white hover:bg-street-600'[m
+[31m-                            : 'bg-street-accent text-street-900 hover:bg-street-accentHover'[m
+[31m-                        }`}[m
+[32m+[m[32m                        onClick={handleUnfollowFromMenu}[m
+[32m+[m[32m                        className="w-full px-4 py-3 text-left text-red-300 hover:bg-street-700"[m
+                       >[m
+[31m-                        {followLoading ? '...' : isFollowingUser ? 'Ne plus suivre' : 'Suivre'}[m
+[32m+[m[32m                        Ne plus suivre[m
+[32m+[m[32m                      </button>[m
+[32m+[m[32m                      <button[m
+[32m+[m[32m                        onClick={() => setShowFollowingMenu(false)}[m
+[32m+[m[32m                        className="w-full px-4 py-3 text-left text-white hover:bg-street-700"[m
+[32m+[m[32m                      >[m
+[32m+[m[32m                        Annuler[m
+                       </button>[m
+[31m-                      {isMutualFollow && ([m
+[31m-                        <button[m
+[31m-                          onClick={handleMessage}[m
+[31m-                          disabled={creatingConversation}[m
+[31m-                          className="px-4 py-2 bg-street-700 text-white rounded-lg hover:bg-street-600 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"[m
+[31m-                          title={creatingConversation ? 'Ouverture...' : 'Envoyer un message'}[m
+[31m-                        >[m
+[31m-                          {creatingConversation ? ([m
+[31m-                            <span className="text-xs">...</span>[m
+[31m-                          ) : ([m
+[31m-                            <MessageCircle size={20} />[m
+[31m-                          )}[m
+[31m-                        </button>[m
+[31m-                      )}[m
+                     </div>[m
+                   )}[m
+                 </div>[m
+[31m-              </>[m
+[31m-            )}[m
+ [m
+[31m-            {error && <div className="text-red-500 text-sm">{error}</div>}[m
+[32m+[m[32m                {/* Message (uniquement si mutual follow) */}[m
+[32m+[m[32m                <button[m
+[32m+[m[32m                  onClick={handleMessage}[m
+[32m+[m[32m                  disabled={!isMutualFollow}[m
+[32m+[m[32m                  className="w-12 bg-street-800 border border-street-700 text-white rounded-xl flex items-center justify-center disabled:opacity-40"[m
+[32m+[m[32m                  title={isMutualFollow ? 'Message' : 'Mutual follow requis'}[m
+[32m+[m[32m                >[m
+[32m+[m[32m                  <MessageCircle size={18} />[m
+[32m+[m[32m                </button>[m
+[32m+[m[32m              </div>[m
+[32m+[m[32m            )}[m
+           </div>[m
+[31m-        </div>[m
+[32m+[m[32m        )}[m
+       </div>[m
+ [m
+[31m-      <div>[m
+[31m-        <h2 className="text-xl font-bold mb-4 text-white">Publications</h2>[m
+[31m-        [m
+[32m+[m[32m      {/* POSTS GRID */}[m
+[32m+[m[32m      <div className="mt-6">[m
+[32m+[m[32m        <div className="px-4 pb-3 text-white font-bold">Publications</div>[m
+[32m+[m
+         {posts.length === 0 ? ([m
+[31m-          <div className="text-center text-gray-500 py-12 bg-street-800 border border-street-700 rounded-xl">[m
+[31m-            Aucune publication[m
+[31m-          </div>[m
+[32m+[m[32m          <div className="text-gray-500 text-center py-12">Aucune publication</div>[m
+         ) : ([m
+[31m-          <div className="grid grid-cols-3 gap-1">[m
+[32m+[m[32m          <div className="grid grid-cols-3 gap-[2px]">[m
+             {posts.map((post, index) => ([m
+               <div[m
+                 key={post.id}[m
+[31m-                onClick={() => handlePostClick(index)}[m
+[31m-                className="aspect-square bg-street-900 relative overflow-hidden cursor-pointer hover:opacity-75 transition border border-street-700"[m
+[32m+[m[32m                onClick={() => openPost(index)}[m
+[32m+[m[32m                className="aspect-square bg-street-900 overflow-hidden cursor-pointer active:opacity-80 border border-street-900"[m
+               >[m
+                 {post.media_url ? ([m
+                   post.type === 'IMAGE' ? ([m
+[31m-                    <img[m
+[31m-                      src={post.media_url}[m
+[31m-                      alt="Post"[m
+[31m-                      className="w-full h-full object-cover"[m
+[31m-                    />[m
+[31m-                  ) : post.type === 'VIDEO' ? ([m
+[31m-                    <video[m
+[31m-                      src={post.media_url}[m
+[31m-                      className="w-full h-full object-cover"[m
+[31m-                    />[m
+[32m+[m[32m                    <img src={post.media_url} className="w-full h-full object-cover" alt="post" />[m
+                   ) : ([m
+[31m-                    <div className="w-full h-full flex items-center justify-center p-4 bg-street-800">[m
+[31m-                      <p className="text-white text-sm text-center line-clamp-6">[m
+[31m-                        {post.caption}[m
+[31m-                      </p>[m
+[31m-                    </div>[m
+[32m+[m[32m                    <video src={post.media_url} className="w-full h-full object-cover" />[m
+                   )[m
+                 ) : ([m
+[31m-                  <div className="w-full h-full flex items-center justify-center p-4 bg-street-800">[m
+[31m-                    <p className="text-white text-sm text-center line-clamp-6">[m
+[31m-                      {post.caption}[m
+[31m-                    </p>[m
+[32m+[m[32m                  <div className="flex items-center justify-center h-full text-white text-xs p-2">[m
+[32m+[m[32m                    {post.caption}[m
+                   </div>[m
+                 )}[m
+               </div>[m
+[36m@@ -528,15 +476,6 @@[m [mexport default function Profile({ viewUserId }) {[m
+           </div>[m
+         )}[m
+       </div>[m
+[31m-[m
+[31m-      {selectedPostIndex !== null && ([m
+[31m-        <PostModal[m
+[31m-          posts={posts}[m
+[31m-          initialIndex={selectedPostIndex}[m
+[31m-          onClose={() => setSelectedPostIndex(null)}[m
+[31m-          onDelete={handleDeletePost}[m
+[31m-        />[m
+[31m-      )}[m
+     </div>[m
+   )[m
+[31m-}[m
+[32m+[m[32m}[m
+\ No newline at end of file[m

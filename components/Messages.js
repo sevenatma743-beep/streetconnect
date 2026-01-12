@@ -1,15 +1,17 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { useSearchParams } from 'next/navigation'
 import { MessageCircle, Search, Send, ArrowLeft, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 
-export default function Messages() {
+export default function Messages({
+  initialConversationId = null,
+  returnTab = 'feed',
+  onExit,
+  onClearInitialConversation,
+  onConversationModeChange // ✅ NEW
+}) {
   const { user } = useAuth()
-  const searchParams = useSearchParams()
-  const conversationId = searchParams.get('conversation')
-  const toUserId = searchParams.get('to')
 
   const [inbox, setInbox] = useState([])
   const [loading, setLoading] = useState(true)
@@ -29,18 +31,24 @@ export default function Messages() {
 
   useEffect(() => {
     if (user) loadInbox()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
+  // ✅ tells parent if we're in conversation mode (hide bottom nav + header)
   useEffect(() => {
-    if (user && conversationId) {
-      console.log('📨 Opening conversation by ID:', conversationId)
-      openConversation(conversationId)
-    } else if (user && toUserId) {
-      console.log('👤 Opening conversation with user:', toUserId)
-      openConversationWithUser(toUserId)
+    if (typeof onConversationModeChange === 'function') {
+      onConversationModeChange(!!activeConversation)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, conversationId, toUserId])
+  }, [activeConversation])
+
+  // ✅ Open convo instantly when Messages tab opens with initialConversationId
+  useEffect(() => {
+    if (user && initialConversationId) {
+      openConversation(initialConversationId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, initialConversationId])
 
   useEffect(() => {
     scrollToBottom()
@@ -74,7 +82,6 @@ export default function Messages() {
   async function loadInbox() {
     try {
       setLoading(true)
-      console.log('🔍 Loading inbox for user:', user.id)
 
       const { data: conversations, error } = await supabase
         .from('conversations')
@@ -121,9 +128,10 @@ export default function Messages() {
         const lastMessage = sortedMessages[0]
 
         const currentUserMember = members.find(m => getMemberId(m) === user.id)
-        const unread = lastMessage && currentUserMember?.last_read_at
-          ? new Date(lastMessage.created_at) > new Date(currentUserMember.last_read_at)
-          : false
+        const unread =
+          lastMessage && currentUserMember?.last_read_at
+            ? new Date(lastMessage.created_at) > new Date(currentUserMember.last_read_at)
+            : false
 
         return {
           id: conv.id,
@@ -131,11 +139,10 @@ export default function Messages() {
           lastMessage: lastMessage || null,
           updatedAt: conv.updated_at,
           unread,
-          memberCount: members.length,
+          memberCount: members.length
         }
       })
 
-      console.log('✅ Inbox loaded:', processedInbox.length, 'conversations')
       setInbox(processedInbox)
     } catch (err) {
       console.error('💥 Exception in loadInbox:', err)
@@ -178,8 +185,6 @@ export default function Messages() {
 
   async function openConversation(conversationId) {
     try {
-      console.log('📨 Loading conversation:', conversationId)
-
       const { data, error } = await supabase
         .from('conversations')
         .select(`
@@ -219,7 +224,6 @@ export default function Messages() {
       })
 
       const otherUserProfile = getMemberProfile(otherMember)
-
       const sortedMessages = (data.messages || []).sort(
         (a, b) => new Date(a.created_at) - new Date(b.created_at)
       )
@@ -235,6 +239,10 @@ export default function Messages() {
       setMessages(sortedMessages)
 
       await markAsRead(conversationId)
+
+      if (typeof onClearInitialConversation === 'function') {
+        onClearInitialConversation()
+      }
     } catch (err) {
       console.error('💥 Exception in openConversation:', err)
     }
@@ -255,13 +263,10 @@ export default function Messages() {
   }
 
   function subscribeToMessages(convoId) {
-    // cleanup before new subscribe
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current)
       channelRef.current = null
     }
-
-    console.log('🟢 Subscribing to realtime messages for conversation:', convoId)
 
     const channel = supabase
       .channel(`conversation:${convoId}`)
@@ -269,7 +274,7 @@ export default function Messages() {
         'postgres_changes',
         {
           event: 'INSERT',
-          schema: 'public', // ✅ IMPORTANT: messages table is in public schema
+          schema: 'public',
           table: 'messages',
           filter: `conversation_id=eq.${convoId}`
         },
@@ -277,7 +282,6 @@ export default function Messages() {
           const inserted = payload?.new
           if (!inserted?.id) return
 
-          // If it's my own message, UI already appended it when sending
           if (inserted.sender_id === user.id) {
             loadInbox()
             return
@@ -301,7 +305,6 @@ export default function Messages() {
               .single()
 
             if (error) {
-              console.error('❌ Realtime fetch message error:', error)
               setMessages(prev =>
                 prev.some(m => m.id === inserted.id) ? prev : [...prev, inserted]
               )
@@ -311,7 +314,6 @@ export default function Messages() {
               )
             }
 
-            // We are viewing this conversation -> mark read
             markAsRead(convoId)
             loadInbox()
           } catch (err) {
@@ -323,9 +325,7 @@ export default function Messages() {
           }
         }
       )
-      .subscribe((status) => {
-        console.log('📡 Realtime status:', status)
-      })
+      .subscribe()
 
     channelRef.current = channel
   }
@@ -434,6 +434,14 @@ export default function Messages() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  function handleBack() {
+    if (activeConversation) {
+      closeConversation()
+      return
+    }
+    if (typeof onExit === 'function') onExit()
+  }
+
   function closeConversation() {
     setActiveConversation(null)
     setMessages([])
@@ -459,7 +467,7 @@ export default function Messages() {
       <div className="flex flex-col h-screen bg-street-900">
         <div className="p-4 border-b border-street-700 bg-street-800 flex items-center gap-3">
           <button
-            onClick={closeConversation}
+            onClick={handleBack}
             className="p-2 hover:bg-street-700 rounded-lg transition"
           >
             <ArrowLeft size={20} className="text-white" />
@@ -528,16 +536,11 @@ export default function Messages() {
   }
 
   // ============================================
-  // RENDER: INBOX VIEW
+  // RENDER: INBOX VIEW (✅ sans gros titre + sans flèche)
   // ============================================
   return (
-    <div className="p-4 pb-20 bg-street-900 min-h-screen">
-      <div className="mb-6">
-        <h2 className="font-display font-bold text-3xl text-white">MESSAGES</h2>
-        <p className="text-sm text-gray-400 mt-1">Tes conversations</p>
-      </div>
-
-      <div className="mb-6 relative">
+    <div className="p-4 bg-street-900 min-h-screen">
+      <div className="mb-4 relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
         <input
           type="text"
@@ -629,7 +632,11 @@ export default function Messages() {
                           : ''}
                       </span>
                     </div>
-                    <p className={`text-sm truncate ${conv.unread ? 'text-white font-semibold' : 'text-gray-400'}`}>
+                    <p
+                      className={`text-sm truncate ${
+                        conv.unread ? 'text-white font-semibold' : 'text-gray-400'
+                      }`}
+                    >
                       {conv.lastMessage?.text || 'Aucun message'}
                     </p>
                   </div>
