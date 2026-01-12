@@ -21,15 +21,15 @@ export default function Feed({ onUserClick }) {
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  
+
   // États pour nouveau post
   const [newPostCaption, setNewPostCaption] = useState('')
   const [newPostMedia, setNewPostMedia] = useState(null)
   const [posting, setPosting] = useState(false)
-  
+
   // Modal composer (mobile uniquement)
   const [showComposerModal, setShowComposerModal] = useState(false)
-  
+
   // Ref pour input file
   const fileInputRef = useRef(null)
 
@@ -41,34 +41,53 @@ export default function Feed({ onUserClick }) {
   // États pour Follow
   const [followingStatus, setFollowingStatus] = useState({})
 
-  // Charger les posts au montage
+  // Charger les posts au montage / changement user
   useEffect(() => {
     loadPosts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
-  // Vérifier le statut follow pour chaque post
+  // Vérifier le statut follow pour chaque post (plus rapide + safe)
   useEffect(() => {
-    if (user && posts.length > 0) {
-      checkAllFollowStatus()
-    }
-  }, [user, posts])
+    let cancelled = false
 
-  async function checkAllFollowStatus() {
-    const status = {}
-    for (const post of posts) {
-      if (post.user_id !== user.id) {
-        status[post.user_id] = await isFollowing(user.id, post.user_id)
+    async function run() {
+      if (!user || posts.length === 0) return
+
+      try {
+        const uniqueUserIds = Array.from(
+          new Set(posts.map(p => p.user_id).filter(uid => uid && uid !== user.id))
+        )
+
+        const results = await Promise.all(
+          uniqueUserIds.map(async (uid) => {
+            const ok = await isFollowing(user.id, uid)
+            return [uid, ok]
+          })
+        )
+
+        if (!cancelled) {
+          const status = Object.fromEntries(results)
+          setFollowingStatus(status)
+        }
+      } catch (e) {
+        // pas bloquant
+        console.error('Erreur check follow status:', e)
       }
     }
-    setFollowingStatus(status)
-  }
+
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [user, posts])
 
   async function loadPosts() {
     try {
       setLoading(true)
       setError(null)
       const data = await getPosts(null, user?.id || null)
-      setPosts(data)
+      setPosts(data || [])
     } catch (err) {
       console.error('Erreur chargement posts:', err)
       setError('Impossible de charger les posts')
@@ -79,12 +98,12 @@ export default function Feed({ onUserClick }) {
 
   async function handleFollow(userId) {
     if (!user) return
-    
-    const isCurrentlyFollowing = followingStatus[userId]
+
+    const isCurrentlyFollowing = !!followingStatus[userId]
     const success = isCurrentlyFollowing
       ? await unfollowUser(userId, user.id)
       : await followUser(userId, user.id)
-    
+
     if (success) {
       setFollowingStatus(prev => ({
         ...prev,
@@ -96,7 +115,7 @@ export default function Feed({ onUserClick }) {
   // Créer un post
   async function handleCreatePost(e) {
     e.preventDefault()
-    
+
     if (!user || (!newPostCaption.trim() && !newPostMedia)) {
       return
     }
@@ -104,6 +123,7 @@ export default function Feed({ onUserClick }) {
     try {
       setPosting(true)
       setError(null)
+
       let mediaUrl = null
       let postType = 'TEXT'
 
@@ -111,7 +131,6 @@ export default function Feed({ onUserClick }) {
         mediaUrl = await uploadPostMedia(newPostMedia, user.id)
         if (!mediaUrl) {
           setError('Erreur upload média')
-          setPosting(false)
           return
         }
         postType = newPostMedia.type.startsWith('image/') ? 'IMAGE' : 'VIDEO'
@@ -125,14 +144,13 @@ export default function Feed({ onUserClick }) {
       }
 
       const newPost = await createPost(postData)
-      
+
       if (newPost) {
         await loadPosts()
         setNewPostCaption('')
         setNewPostMedia(null)
         setError(null)
         setShowComposerModal(false)
-        
         if (fileInputRef.current) fileInputRef.current.value = ''
       } else {
         setError('Erreur création post')
@@ -149,21 +167,24 @@ export default function Feed({ onUserClick }) {
     if (!user) return
 
     try {
-      const success = isLiked 
+      const success = isLiked
         ? await unlikePost(postId, user.id)
         : await likePost(postId, user.id)
 
       if (success) {
-        setPosts(posts.map(post => {
-          if (post.id === postId) {
-            return {
-              ...post,
-              likes_count: isLiked ? post.likes_count - 1 : post.likes_count + 1,
-              user_has_liked: !isLiked
+        setPosts(prev =>
+          prev.map(post => {
+            if (post.id === postId) {
+              const nextCount = isLiked ? (post.likes_count || 0) - 1 : (post.likes_count || 0) + 1
+              return {
+                ...post,
+                likes_count: Math.max(nextCount, 0),
+                user_has_liked: !isLiked
+              }
             }
-          }
-          return post
-        }))
+            return post
+          })
+        )
       }
     } catch (err) {
       console.error('Erreur like/unlike:', err)
@@ -173,7 +194,7 @@ export default function Feed({ onUserClick }) {
   async function loadComments(postId) {
     try {
       const data = await getComments(postId)
-      setComments(prev => ({ ...prev, [postId]: data }))
+      setComments(prev => ({ ...prev, [postId]: data || [] }))
     } catch (err) {
       console.error('Erreur chargement commentaires:', err)
     }
@@ -181,11 +202,11 @@ export default function Feed({ onUserClick }) {
 
   function toggleComments(postId) {
     const isExpanded = expandedComments[postId]
-    
+
     if (!isExpanded && !comments[postId]) {
       loadComments(postId)
     }
-    
+
     setExpandedComments(prev => ({
       ...prev,
       [postId]: !isExpanded
@@ -203,22 +224,24 @@ export default function Feed({ onUserClick }) {
       }
 
       const comment = await addComment(commentData)
-      
+
       if (comment) {
         setComments(prev => ({
           ...prev,
           [postId]: [...(prev[postId] || []), comment]
         }))
 
-        setPosts(posts.map(post => {
-          if (post.id === postId) {
-            return {
-              ...post,
-              comments_count: post.comments_count + 1
+        setPosts(prev =>
+          prev.map(post => {
+            if (post.id === postId) {
+              return {
+                ...post,
+                comments_count: (post.comments_count || 0) + 1
+              }
             }
-          }
-          return post
-        }))
+            return post
+          })
+        )
 
         setNewComment(prev => ({ ...prev, [postId]: '' }))
       }
@@ -229,14 +252,12 @@ export default function Feed({ onUserClick }) {
 
   async function handleDeletePost(postId) {
     if (!user) return
-    
     if (!confirm('Supprimer ce post ?')) return
 
     try {
       const success = await deletePost(postId, user.id)
-      
       if (success) {
-        setPosts(posts.filter(post => post.id !== postId))
+        setPosts(prev => prev.filter(post => post.id !== postId))
       } else {
         alert('Impossible de supprimer ce post')
       }
@@ -251,22 +272,24 @@ export default function Feed({ onUserClick }) {
 
     try {
       const success = await deleteComment(commentId, user.id, postOwnerId)
-      
+
       if (success) {
         setComments(prev => ({
           ...prev,
           [postId]: (prev[postId] || []).filter(c => c.id !== commentId)
         }))
 
-        setPosts(posts.map(post => {
-          if (post.id === postId) {
-            return {
-              ...post,
-              comments_count: Math.max(post.comments_count - 1, 0)
+        setPosts(prev =>
+          prev.map(post => {
+            if (post.id === postId) {
+              return {
+                ...post,
+                comments_count: Math.max((post.comments_count || 0) - 1, 0)
+              }
             }
-          }
-          return post
-        }))
+            return post
+          })
+        )
       } else {
         alert('Impossible de supprimer ce commentaire')
       }
@@ -288,7 +311,7 @@ export default function Feed({ onUserClick }) {
     return (
       <div className="flex flex-col justify-center items-center h-64 space-y-4">
         <div className="text-red-500">{error}</div>
-        <button 
+        <button
           onClick={loadPosts}
           className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
         >
@@ -308,7 +331,7 @@ export default function Feed({ onUserClick }) {
             alt="Avatar"
             className="w-10 h-10 rounded-full border-2 border-street-accent"
           />
-          <div 
+          <div
             onClick={() => setShowComposerModal(true)}
             className="flex-1 bg-street-900 border border-street-700 rounded-full px-4 py-2 text-gray-500 cursor-pointer hover:border-street-accent transition"
           >
@@ -335,7 +358,10 @@ export default function Feed({ onUserClick }) {
 
       {/* Composer COMPLET desktop (formulaire classique) */}
       {user && (
-        <form onSubmit={handleCreatePost} className="hidden md:block bg-street-800 border border-street-700 rounded-xl shadow-lg p-4 space-y-3">
+        <form
+          onSubmit={handleCreatePost}
+          className="hidden md:block bg-street-800 border border-street-700 rounded-xl shadow-lg p-4 space-y-3"
+        >
           <textarea
             value={newPostCaption}
             onChange={(e) => setNewPostCaption(e.target.value)}
@@ -343,7 +369,7 @@ export default function Feed({ onUserClick }) {
             className="w-full p-3 bg-street-900 border border-street-700 text-white rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-street-accent placeholder-gray-500"
             rows={3}
           />
-          
+
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <input
               type="file"
@@ -351,7 +377,7 @@ export default function Feed({ onUserClick }) {
               onChange={(e) => setNewPostMedia(e.target.files[0])}
               className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-street-700 file:text-white hover:file:bg-street-600"
             />
-            
+
             <button
               type="submit"
               disabled={posting || (!newPostCaption.trim() && !newPostMedia)}
@@ -368,7 +394,7 @@ export default function Feed({ onUserClick }) {
       {/* MODAL composer mobile */}
       {showComposerModal && (
         <div className="fixed inset-0 bg-black/90 z-[9999] flex items-end md:items-center md:justify-center">
-          <div 
+          <div
             className="bg-street-800 rounded-t-2xl md:rounded-2xl w-full md:max-w-lg flex flex-col overflow-hidden relative z-[10000]"
             style={{ maxHeight: 'calc(100vh - 90px)' }}
           >
@@ -392,7 +418,7 @@ export default function Feed({ onUserClick }) {
                   rows={4}
                   autoFocus
                 />
-                
+
                 <input
                   type="file"
                   accept="image/*,video/*"
@@ -409,7 +435,7 @@ export default function Feed({ onUserClick }) {
                 {error && <div className="text-red-400 text-sm">{error}</div>}
               </div>
 
-              <div 
+              <div
                 className="sticky bottom-0 bg-street-800 border-t border-street-700 p-4 flex gap-3 flex-shrink-0"
                 style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
               >
@@ -439,7 +465,7 @@ export default function Feed({ onUserClick }) {
           Aucun post pour le moment
         </div>
       ) : (
-        posts.map((post, index) => (
+        posts.map((post) => (
           <div key={post.id} className="bg-street-800 border border-street-700 rounded-xl shadow-lg overflow-hidden">
             {/* Header */}
             <div className="p-4 flex items-center justify-between">
@@ -447,18 +473,12 @@ export default function Feed({ onUserClick }) {
                 <img
                   src={post.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}
                   alt={post.username || 'Anonyme'}
-                  onClick={() => {
-                    console.log('🔵 Clic avatar - userId:', post.user_id, 'username:', post.username, 'onUserClick exists:', !!onUserClick)
-                    onUserClick && onUserClick(post.user_id)
-                  }}
+                  onClick={() => onUserClick && onUserClick(post.user_id)}
                   className="w-10 h-10 rounded-full border-2 border-street-accent cursor-pointer hover:opacity-80 transition"
                 />
                 <div>
-                  <div 
-                    onClick={() => {
-                      console.log('🔵 Clic username - userId:', post.user_id, 'username:', post.username, 'onUserClick exists:', !!onUserClick)
-                      onUserClick && onUserClick(post.user_id)
-                    }}
+                  <div
+                    onClick={() => onUserClick && onUserClick(post.user_id)}
                     className="font-semibold text-white cursor-pointer hover:text-street-accent transition"
                   >
                     {post.username || 'Anonyme'}
@@ -468,7 +488,7 @@ export default function Feed({ onUserClick }) {
                   </div>
                 </div>
               </div>
-              
+
               <div className="flex items-center space-x-2">
                 {/* Bouton Follow (seulement si ce n'est pas mon post) */}
                 {user && post.user_id !== user.id && (
@@ -483,7 +503,7 @@ export default function Feed({ onUserClick }) {
                     {followingStatus[post.user_id] ? 'Suivi' : 'Suivre'}
                   </button>
                 )}
-                
+
                 {/* Bouton supprimer (seulement si c'est mon post) */}
                 {user && post.user_id === user.id && (
                   <button
@@ -501,17 +521,9 @@ export default function Feed({ onUserClick }) {
             <div className="w-full">
               {post.media_url && (
                 post.type === 'IMAGE' ? (
-                  <img 
-                    src={post.media_url} 
-                    alt="Post media"
-                    className="w-full h-auto"
-                  />
+                  <img src={post.media_url} alt="Post media" className="w-full h-auto" />
                 ) : post.type === 'VIDEO' ? (
-                  <video 
-                    src={post.media_url} 
-                    controls
-                    className="w-full h-auto"
-                  />
+                  <video src={post.media_url} controls className="w-full h-auto" />
                 ) : null
               )}
             </div>
@@ -548,11 +560,8 @@ export default function Feed({ onUserClick }) {
                 {/* Liste commentaires */}
                 <div className="space-y-2 mt-3 max-h-64 overflow-y-auto">
                   {(comments[post.id] || []).map(comment => {
-                    const canDelete = user && (
-                      comment.user_id === user.id ||
-                      post.user_id === user.id
-                    )
-                    
+                    const canDelete = user && (comment.user_id === user.id || post.user_id === user.id)
+
                     return (
                       <div key={comment.id} className="flex space-x-2 text-sm">
                         <img
@@ -588,12 +597,15 @@ export default function Feed({ onUserClick }) {
                     <input
                       type="text"
                       value={newComment[post.id] || ''}
-                      onChange={(e) => setNewComment(prev => ({
-                        ...prev,
-                        [post.id]: e.target.value
-                      }))}
-                      onKeyPress={(e) => {
+                      onChange={(e) =>
+                        setNewComment(prev => ({
+                          ...prev,
+                          [post.id]: e.target.value
+                        }))
+                      }
+                      onKeyDown={(e) => {
                         if (e.key === 'Enter') {
+                          e.preventDefault()
                           handleAddComment(post.id)
                         }
                       }}
