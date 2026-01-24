@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+'use client'
+
+import { useState, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { X, Image as ImageIcon } from 'lucide-react'
 import {
-  getPosts,
   createPost,
   uploadPostMedia,
   likePost,
@@ -12,15 +13,16 @@ import {
   deletePost,
   deleteComment,
   followUser,
-  unfollowUser,
-  isFollowing
+  unfollowUser
 } from '../lib/supabase'
 
-export default function Feed({ onUserClick }) {
+export default function Feed({ onUserClick, feed }) {
   const { user } = useAuth()
-  const [posts, setPosts] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+
+  const posts = feed?.posts || []
+  const loading = !!feed?.isLoading
+  const error = feed?.error || null
+  const mutate = feed?.mutate
 
   // États pour nouveau post
   const [newPostCaption, setNewPostCaption] = useState('')
@@ -38,91 +40,60 @@ export default function Feed({ onUserClick }) {
   const [comments, setComments] = useState({})
   const [newComment, setNewComment] = useState({})
 
-  // États pour Follow
-  const [followingStatus, setFollowingStatus] = useState({})
+  // Erreur locale (create post)
+  const [localError, setLocalError] = useState(null)
 
-  // Charger les posts au montage / changement user
-  useEffect(() => {
-    loadPosts()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
-
-  // Vérifier le statut follow pour chaque post (plus rapide + safe)
-  useEffect(() => {
-    let cancelled = false
-
-    async function run() {
-      if (!user || posts.length === 0) return
-
-      try {
-        const uniqueUserIds = Array.from(
-          new Set(posts.map(p => p.user_id).filter(uid => uid && uid !== user.id))
-        )
-
-        const results = await Promise.all(
-          uniqueUserIds.map(async (uid) => {
-            const ok = await isFollowing(user.id, uid)
-            return [uid, ok]
-          })
-        )
-
-        if (!cancelled) {
-          const status = Object.fromEntries(results)
-          setFollowingStatus(status)
-        }
-      } catch (e) {
-        // pas bloquant
-        console.error('Erreur check follow status:', e)
-      }
-    }
-
-    run()
-    return () => {
-      cancelled = true
-    }
-  }, [user, posts])
-
-  async function loadPosts() {
+  async function safeRevalidate() {
     try {
-      setLoading(true)
-      setError(null)
-      const data = await getPosts(null, user?.id || null)
-      setPosts(data || [])
-    } catch (err) {
-      console.error('Erreur chargement posts:', err)
-      setError('Impossible de charger les posts')
-    } finally {
-      setLoading(false)
+      if (mutate) await mutate()
+    } catch (e) {
+      // pas bloquant
+      console.error('Revalidate error:', e)
     }
   }
 
-  async function handleFollow(userId) {
+  async function handleFollow(postUserId, isCurrentlyFollowing) {
     if (!user) return
 
-    const isCurrentlyFollowing = !!followingStatus[userId]
-    const success = isCurrentlyFollowing
-      ? await unfollowUser(userId, user.id)
-      : await followUser(userId, user.id)
+    // Optimistic update (UI instant)
+    if (mutate) {
+      mutate(
+        (prev) =>
+          (prev || []).map((p) =>
+            p.user_id === postUserId ? { ...p, is_following_author: !isCurrentlyFollowing } : p
+          ),
+        { revalidate: false }
+      )
+    }
 
-    if (success) {
-      setFollowingStatus(prev => ({
-        ...prev,
-        [userId]: !isCurrentlyFollowing
-      }))
+    const success = isCurrentlyFollowing
+      ? await unfollowUser(postUserId, user.id)
+      : await followUser(postUserId, user.id)
+
+    if (!success) {
+      // rollback
+      if (mutate) {
+        mutate(
+          (prev) =>
+            (prev || []).map((p) =>
+              p.user_id === postUserId ? { ...p, is_following_author: isCurrentlyFollowing } : p
+            ),
+          { revalidate: false }
+        )
+      }
+    } else {
+      // revalidate propre (source de vérité)
+      safeRevalidate()
     }
   }
 
-  // Créer un post
   async function handleCreatePost(e) {
     e.preventDefault()
-
-    if (!user || (!newPostCaption.trim() && !newPostMedia)) {
-      return
-    }
+    if (!user || (!newPostCaption.trim() && !newPostMedia)) return
 
     try {
       setPosting(true)
-      setError(null)
+      setLocalError(null)
 
       let mediaUrl = null
       let postType = 'TEXT'
@@ -130,7 +101,7 @@ export default function Feed({ onUserClick }) {
       if (newPostMedia) {
         mediaUrl = await uploadPostMedia(newPostMedia, user.id)
         if (!mediaUrl) {
-          setError('Erreur upload média')
+          setLocalError('Erreur upload média')
           return
         }
         postType = newPostMedia.type.startsWith('image/') ? 'IMAGE' : 'VIDEO'
@@ -143,21 +114,22 @@ export default function Feed({ onUserClick }) {
         type: postType
       }
 
-      const newPost = await createPost(postData)
-
-      if (newPost) {
-        await loadPosts()
-        setNewPostCaption('')
-        setNewPostMedia(null)
-        setError(null)
-        setShowComposerModal(false)
-        if (fileInputRef.current) fileInputRef.current.value = ''
-      } else {
-        setError('Erreur création post')
+      const created = await createPost(postData)
+      if (!created) {
+        setLocalError('Erreur création post')
+        return
       }
+
+      setNewPostCaption('')
+      setNewPostMedia(null)
+      setShowComposerModal(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+
+      // revalidate feed
+      await safeRevalidate()
     } catch (err) {
       console.error('Erreur création post:', err)
-      setError('Impossible de créer le post')
+      setLocalError('Impossible de créer le post')
     } finally {
       setPosting(false)
     }
@@ -166,28 +138,39 @@ export default function Feed({ onUserClick }) {
   async function handleLike(postId, isLiked) {
     if (!user) return
 
+    // optimistic update
+    if (mutate) {
+      mutate(
+        (prev) =>
+          (prev || []).map((p) => {
+            if (p.id !== postId) return p
+            const current = p.likes_count || 0
+            const nextCount = isLiked ? current - 1 : current + 1
+            return {
+              ...p,
+              likes_count: Math.max(nextCount, 0),
+              user_has_liked: !isLiked
+            }
+          }),
+        { revalidate: false }
+      )
+    }
+
     try {
       const success = isLiked
         ? await unlikePost(postId, user.id)
         : await likePost(postId, user.id)
 
-      if (success) {
-        setPosts(prev =>
-          prev.map(post => {
-            if (post.id === postId) {
-              const nextCount = isLiked ? (post.likes_count || 0) - 1 : (post.likes_count || 0) + 1
-              return {
-                ...post,
-                likes_count: Math.max(nextCount, 0),
-                user_has_liked: !isLiked
-              }
-            }
-            return post
-          })
-        )
+      if (!success) {
+        // rollback via revalidate
+        await safeRevalidate()
+      } else {
+        // revalidate léger
+        safeRevalidate()
       }
     } catch (err) {
       console.error('Erreur like/unlike:', err)
+      await safeRevalidate()
     }
   }
 
@@ -202,10 +185,7 @@ export default function Feed({ onUserClick }) {
 
   function toggleComments(postId) {
     const isExpanded = expandedComments[postId]
-
-    if (!isExpanded && !comments[postId]) {
-      loadComments(postId)
-    }
+    if (!isExpanded && !comments[postId]) loadComments(postId)
 
     setExpandedComments(prev => ({
       ...prev,
@@ -224,27 +204,28 @@ export default function Feed({ onUserClick }) {
       }
 
       const comment = await addComment(commentData)
+      if (!comment) return
 
-      if (comment) {
-        setComments(prev => ({
-          ...prev,
-          [postId]: [...(prev[postId] || []), comment]
-        }))
+      setComments(prev => ({
+        ...prev,
+        [postId]: [...(prev[postId] || []), comment]
+      }))
 
-        setPosts(prev =>
-          prev.map(post => {
-            if (post.id === postId) {
-              return {
-                ...post,
-                comments_count: (post.comments_count || 0) + 1
-              }
-            }
-            return post
-          })
+      // optimistic comments_count in feed
+      if (mutate) {
+        mutate(
+          (prev) =>
+            (prev || []).map((p) =>
+              p.id === postId
+                ? { ...p, comments_count: (p.comments_count || 0) + 1 }
+                : p
+            ),
+          { revalidate: false }
         )
-
-        setNewComment(prev => ({ ...prev, [postId]: '' }))
       }
+
+      setNewComment(prev => ({ ...prev, [postId]: '' }))
+      safeRevalidate()
     } catch (err) {
       console.error('Erreur ajout commentaire:', err)
     }
@@ -254,16 +235,23 @@ export default function Feed({ onUserClick }) {
     if (!user) return
     if (!confirm('Supprimer ce post ?')) return
 
+    // optimistic remove
+    if (mutate) {
+      mutate((prev) => (prev || []).filter((p) => p.id !== postId), { revalidate: false })
+    }
+
     try {
       const success = await deletePost(postId, user.id)
-      if (success) {
-        setPosts(prev => prev.filter(post => post.id !== postId))
-      } else {
+      if (!success) {
         alert('Impossible de supprimer ce post')
+        safeRevalidate()
+      } else {
+        safeRevalidate()
       }
     } catch (err) {
       console.error('Erreur suppression post:', err)
       alert('Erreur lors de la suppression')
+      safeRevalidate()
     }
   }
 
@@ -272,33 +260,36 @@ export default function Feed({ onUserClick }) {
 
     try {
       const success = await deleteComment(commentId, user.id, postOwnerId)
-
-      if (success) {
-        setComments(prev => ({
-          ...prev,
-          [postId]: (prev[postId] || []).filter(c => c.id !== commentId)
-        }))
-
-        setPosts(prev =>
-          prev.map(post => {
-            if (post.id === postId) {
-              return {
-                ...post,
-                comments_count: Math.max((post.comments_count || 0) - 1, 0)
-              }
-            }
-            return post
-          })
-        )
-      } else {
+      if (!success) {
         alert('Impossible de supprimer ce commentaire')
+        return
       }
+
+      setComments(prev => ({
+        ...prev,
+        [postId]: (prev[postId] || []).filter(c => c.id !== commentId)
+      }))
+
+      if (mutate) {
+        mutate(
+          (prev) =>
+            (prev || []).map((p) =>
+              p.id === postId
+                ? { ...p, comments_count: Math.max((p.comments_count || 0) - 1, 0) }
+                : p
+            ),
+          { revalidate: false }
+        )
+      }
+
+      safeRevalidate()
     } catch (err) {
       console.error('Erreur suppression commentaire:', err)
       alert('Erreur lors de la suppression')
     }
   }
 
+  // UI states
   if (loading && posts.length === 0) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -307,12 +298,12 @@ export default function Feed({ onUserClick }) {
     )
   }
 
-  if (error && posts.length === 0) {
+  if ((error || localError) && posts.length === 0) {
     return (
       <div className="flex flex-col justify-center items-center h-64 space-y-4">
-        <div className="text-red-500">{error}</div>
+        <div className="text-red-500">{String(error || localError)}</div>
         <button
-          onClick={loadPosts}
+          onClick={safeRevalidate}
           className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
         >
           Réessayer
@@ -348,7 +339,7 @@ export default function Feed({ onUserClick }) {
             type="file"
             accept="image/*,video/*"
             onChange={(e) => {
-              setNewPostMedia(e.target.files[0])
+              setNewPostMedia(e.target.files?.[0] || null)
               setShowComposerModal(true)
             }}
             className="hidden"
@@ -356,7 +347,7 @@ export default function Feed({ onUserClick }) {
         </div>
       )}
 
-      {/* Composer COMPLET desktop (formulaire classique) */}
+      {/* Composer COMPLET desktop */}
       {user && (
         <form
           onSubmit={handleCreatePost}
@@ -374,7 +365,7 @@ export default function Feed({ onUserClick }) {
             <input
               type="file"
               accept="image/*,video/*"
-              onChange={(e) => setNewPostMedia(e.target.files[0])}
+              onChange={(e) => setNewPostMedia(e.target.files?.[0] || null)}
               className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-street-700 file:text-white hover:file:bg-street-600"
             />
 
@@ -387,7 +378,7 @@ export default function Feed({ onUserClick }) {
             </button>
           </div>
 
-          {error && <div className="text-red-400 text-sm">{error}</div>}
+          {(localError || error) && <div className="text-red-400 text-sm">{String(localError || error)}</div>}
         </form>
       )}
 
@@ -422,7 +413,7 @@ export default function Feed({ onUserClick }) {
                 <input
                   type="file"
                   accept="image/*,video/*"
-                  onChange={(e) => setNewPostMedia(e.target.files[0])}
+                  onChange={(e) => setNewPostMedia(e.target.files?.[0] || null)}
                   className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-street-700 file:text-white hover:file:bg-street-600"
                 />
 
@@ -432,7 +423,9 @@ export default function Feed({ onUserClick }) {
                   </div>
                 )}
 
-                {error && <div className="text-red-400 text-sm">{error}</div>}
+                {(localError || error) && (
+                  <div className="text-red-400 text-sm">{String(localError || error)}</div>
+                )}
               </div>
 
               <div
@@ -490,21 +483,21 @@ export default function Feed({ onUserClick }) {
               </div>
 
               <div className="flex items-center space-x-2">
-                {/* Bouton Follow (seulement si ce n'est pas mon post) */}
+                {/* Follow (data vient du feed : is_following_author) */}
                 {user && post.user_id !== user.id && (
                   <button
-                    onClick={() => handleFollow(post.user_id)}
+                    onClick={() => handleFollow(post.user_id, !!post.is_following_author)}
                     className={`px-4 py-1 rounded-lg text-sm font-bold transition ${
-                      followingStatus[post.user_id]
+                      post.is_following_author
                         ? 'bg-street-700 text-white hover:bg-street-600'
                         : 'bg-street-accent text-street-900 hover:bg-street-accentHover'
                     }`}
                   >
-                    {followingStatus[post.user_id] ? 'Suivi' : 'Suivre'}
+                    {post.is_following_author ? 'Suivi' : 'Suivre'}
                   </button>
                 )}
 
-                {/* Bouton supprimer (seulement si c'est mon post) */}
+                {/* Supprimer */}
                 {user && post.user_id === user.id && (
                   <button
                     onClick={() => handleDeletePost(post.id)}
@@ -517,7 +510,7 @@ export default function Feed({ onUserClick }) {
               </div>
             </div>
 
-            {/* Media - Non cliquable */}
+            {/* Media */}
             <div className="w-full">
               {post.media_url && (
                 post.type === 'IMAGE' ? (
@@ -538,7 +531,7 @@ export default function Feed({ onUserClick }) {
             {/* Actions */}
             <div className="px-4 py-3 border-t border-street-700 flex items-center space-x-6">
               <button
-                onClick={() => handleLike(post.id, post.user_has_liked)}
+                onClick={() => handleLike(post.id, !!post.user_has_liked)}
                 className="flex items-center space-x-2 text-gray-400 hover:text-street-accent transition"
               >
                 <span>{post.user_has_liked ? '❤️' : '🤍'}</span>
@@ -557,7 +550,6 @@ export default function Feed({ onUserClick }) {
             {/* Commentaires */}
             {expandedComments[post.id] && (
               <div className="px-4 pb-4 border-t border-street-700 space-y-3">
-                {/* Liste commentaires */}
                 <div className="space-y-2 mt-3 max-h-64 overflow-y-auto">
                   {(comments[post.id] || []).map(comment => {
                     const canDelete = user && (comment.user_id === user.id || post.user_id === user.id)
@@ -591,7 +583,6 @@ export default function Feed({ onUserClick }) {
                   })}
                 </div>
 
-                {/* Input nouveau commentaire */}
                 {user && (
                   <div className="flex flex-col sm:flex-row gap-2">
                     <input

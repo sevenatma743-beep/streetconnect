@@ -13,11 +13,15 @@ import Shop from '../components/Shop'
 import Messages from '../components/Messages'
 import SearchUsers from '../components/SearchUsers'
 import Notifications from '../components/Notifications'
+import { useFeed } from '../hooks/useFeed'
 
 export default function HomePage() {
   const { user, loading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  // ✅ Feed global (1 fetch + cache + revalidate)
+  const feed = useFeed(user?.id)
 
   // ✅ Ne montrer l'écran "Chargement..." qu'au tout premier boot
   const [hasBooted, setHasBooted] = useState(false)
@@ -49,8 +53,6 @@ export default function HomePage() {
       setActiveTab(tab)
       if (tab === 'profile') setViewingUserId(u || null)
       if (tab !== 'profile') setViewingUserId(null)
-    } else {
-      // pas de tab => rien
     }
   }, [searchParams])
 
@@ -70,7 +72,6 @@ export default function HomePage() {
   }
 
   function handleUserClick(userId) {
-    // mémorise d’où on vient
     setProfileReturnTab(activeTab || 'feed')
     setViewingUserId(userId)
     setActiveTab('profile')
@@ -109,7 +110,6 @@ export default function HomePage() {
     <Layout
       activeTab={activeTab}
       setActiveTab={(tab) => {
-        // ✅ Si on appuie sur PROFIL dans la navbar => revenir sur "mon profil"
         if (tab === 'profile') setViewingUserId(null)
         setActiveTab(tab)
       }}
@@ -119,7 +119,7 @@ export default function HomePage() {
       onOpenNotifications={handleOpenNotifications}
       onOpenSearch={handleOpenSearch}
     >
-      {activeTab === 'feed' && <Feed onUserClick={handleUserClick} />}
+      {activeTab === 'feed' && <Feed onUserClick={handleUserClick} feed={feed} />}
 
       {activeTab === 'spots' && <Spots />}
       {activeTab === 'challenges' && <Challenges />}
