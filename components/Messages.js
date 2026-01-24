@@ -143,7 +143,14 @@ export default function Messages({
         }
       })
 
-      setInbox(processedInbox)
+      // ✅ IMPORTANT: sort by last message timestamp (fallback to updatedAt)
+      const sortedInbox = (processedInbox || []).sort((a, b) => {
+        const ta = new Date(a?.lastMessage?.created_at || a?.updatedAt || 0).getTime()
+        const tb = new Date(b?.lastMessage?.created_at || b?.updatedAt || 0).getTime()
+        return tb - ta
+      })
+
+      setInbox(sortedInbox)
     } catch (err) {
       console.error('💥 Exception in loadInbox:', err)
       setInbox([])
