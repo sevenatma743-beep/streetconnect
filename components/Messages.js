@@ -9,8 +9,10 @@ export default function Messages({
   returnTab = 'feed',
   onExit,
   onClearInitialConversation,
-  onConversationModeChange // ✅ NEW
+  onConversationModeChange,
+  onUnreadChange
 }) {
+
   const { user } = useAuth()
 
   const [inbox, setInbox] = useState([])
@@ -109,6 +111,7 @@ export default function Messages({
       if (error) {
         console.error('❌ Error loading inbox:', error)
         setInbox([])
+      if (typeof onUnreadChange === 'function') onUnreadChange(false)
         return
       }
 
@@ -154,6 +157,7 @@ export default function Messages({
     } catch (err) {
       console.error('💥 Exception in loadInbox:', err)
       setInbox([])
+      if (typeof onUnreadChange === 'function') onUnreadChange(false)
     } finally {
       setLoading(false)
     }
