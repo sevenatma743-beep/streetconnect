@@ -154,12 +154,17 @@ export default function Messages({
       })
 
       setInbox(sortedInbox)
+
+      // Update global unread badge (frontend)
+      const hasUnread = sortedInbox.some((c) => c.unread)
+      if (typeof onUnreadChange === 'function') onUnreadChange(hasUnread)
     } catch (err) {
       console.error('💥 Exception in loadInbox:', err)
       setInbox([])
       if (typeof onUnreadChange === 'function') onUnreadChange(false)
     } finally {
       setLoading(false)
+
     }
   }
 
