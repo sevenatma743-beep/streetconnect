@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Layout from '../components/Layout'
+import { supabase } from '../lib/supabase'
 import Feed from '../components/Feed'
 import Profile from '../components/Profile'
 import Spots from '../components/Spots'
@@ -27,6 +28,7 @@ export default function HomePage() {
   const [hasBooted, setHasBooted] = useState(false)
 
   const [activeTab, setActiveTab] = useState('feed')
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false)
   const [viewingUserId, setViewingUserId] = useState(null)
 
   // 🔙 Pour retour intelligent quand on ouvre un profil depuis search / notifications / feed…
@@ -64,7 +66,79 @@ export default function HomePage() {
 
   // ✅ Loader uniquement au premier chargement
   if (!hasBooted && loading) {
-    return (
+  
+  // Poll unread state in background so the badge can update even when Messages tab isn't open.
+  useEffect(() => {
+    if (!user?.id) return
+
+    let cancelled = false
+
+    const computeHasUnread = async () => {
+      try {
+        const { data: conversations, error } = await supabase
+          .from('conversations')
+          .select(`
+            id,
+            updated_at,
+            conversation_members (
+              user_id,
+              last_read_at
+            ),
+            messages (
+              id,
+              created_at,
+              sender_id
+            )
+          `)
+          .order('updated_at', { ascending: false })
+          .order('created_at', { foreignTable: 'messages', ascending: false })
+          .limit(1, { foreignTable: 'messages' })
+
+        if (error) throw error
+        if (cancelled) return
+
+        const hasUnread = (conversations || []).some(conv => {
+          const lastMessage = conv?.messages?.[0]
+          if (!lastMessage) return false
+          if (lastMessage.sender_id && lastMessage.sender_id === user.id) return false
+
+          const members = conv?.conversation_members || []
+          const current = members.find(m => m.user_id === user.id)
+          const backendLastReadAt = current?.last_read_at || null
+
+          // local fallback (same key as in Messages.js)
+          let localLastReadAt = null
+          try {
+            localLastReadAt = localStorage.getItem(`sc:last_read_at:${user.id}:${conv.id}`)
+          } catch {}
+
+          const effectiveLastReadAt = (() => {
+            if (!backendLastReadAt && !localLastReadAt) return null
+            if (backendLastReadAt && !localLastReadAt) return backendLastReadAt
+            if (!backendLastReadAt && localLastReadAt) return localLastReadAt
+            return new Date(backendLastReadAt) > new Date(localLastReadAt) ? backendLastReadAt : localLastReadAt
+          })()
+
+          if (!effectiveLastReadAt) return true
+          return new Date(lastMessage.created_at) > new Date(effectiveLastReadAt)
+        })
+
+        setHasUnreadMessages(!!hasUnread)
+      } catch (e) {
+        // Don't spam console in prod; keep silent for now
+      }
+    }
+
+    computeHasUnread()
+    const id = setInterval(computeHasUnread, 12000)
+
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [user?.id])
+
+  return (
       <div className="min-h-screen bg-street-900 flex items-center justify-center">
         <div className="text-white">Chargement...</div>
       </div>
@@ -108,6 +182,7 @@ export default function HomePage() {
 
   return (
     <Layout
+        hasUnreadMessages={hasUnreadMessages}
       activeTab={activeTab}
       setActiveTab={(tab) => {
         if (tab === 'profile') setViewingUserId(null)
@@ -132,6 +207,7 @@ export default function HomePage() {
 
       {activeTab === 'messages' && (
         <Messages
+          onUnreadChange={setHasUnreadMessages}
           initialConversationId={messagesInitialConversationId}
           returnTab={messagesReturnTab}
           onExit={() => {

@@ -9,6 +9,7 @@ export default function Layout({
   setActiveTab,
   children,
   hideHeader = false,
+  hasUnreadMessages = false,
   hideBottomNav = false
 }) {
   const { user } = useAuth()
@@ -78,10 +79,16 @@ export default function Layout({
 
             <button
               onClick={() => setActiveTab('messages')}
-              className="p-2 hover:bg-street-700 rounded-lg transition"
+              className="p-2 hover:bg-street-700 rounded-lg transition relative"
               aria-label="Messages"
             >
               <MessageCircle size={22} className="text-gray-400 hover:text-street-accent" />
+              {hasUnreadMessages && activeTab !== 'messages' && (
+                <span
+                  className="absolute -top-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full bg-street-accent"
+                  aria-label="Nouveaux messages"
+                />
+              )}
             </button>
           </div>
         </header>

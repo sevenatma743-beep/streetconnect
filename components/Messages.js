@@ -4,6 +4,37 @@ import { MessageCircle, Search, Send, ArrowLeft, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 
+
+// --- Local "read" fallback (frontend-only) ---
+// If backend last_read_at doesn't update (RLS / update returning 0 rows), we still want the badge to behave.
+// We store a local last_read_at per (userId, conversationId) in localStorage.
+function getLocalLastReadAt(userId, conversationId) {
+  if (!userId || !conversationId) return null
+  try {
+    const key = `sc:last_read_at:${userId}:${conversationId}`
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function setLocalLastReadAt(userId, conversationId, isoDate) {
+  if (!userId || !conversationId || !isoDate) return
+  try {
+    const key = `sc:last_read_at:${userId}:${conversationId}`
+    localStorage.setItem(key, isoDate)
+  } catch {
+    // ignore
+  }
+}
+
+function maxIsoDate(a, b) {
+  if (!a && !b) return null
+  if (a && !b) return a
+  if (!a && b) return b
+  return new Date(a) > new Date(b) ? a : b
+}
+
 export default function Messages({
   initialConversationId = null,
   returnTab = 'feed',
@@ -131,10 +162,19 @@ export default function Messages({
         const lastMessage = sortedMessages[0]
 
         const currentUserMember = members.find(m => getMemberId(m) === user.id)
-        const unread =
-          lastMessage && currentUserMember?.last_read_at
-            ? new Date(lastMessage.created_at) > new Date(currentUserMember.last_read_at)
-            : false
+
+        const backendLastReadAt = currentUserMember?.last_read_at || null
+        const localLastReadAt = getLocalLastReadAt(user.id, conv.id)
+        const effectiveLastReadAt = maxIsoDate(backendLastReadAt, localLastReadAt)
+
+        const unread = (() => {
+          if (!lastMessage) return false
+          // A message you sent yourself shouldn't make the convo "unread"
+          if (lastMessage.sender_id && lastMessage.sender_id === user.id) return false
+          // If we never read anything yet, it's unread as soon as there's at least one incoming message
+          if (!effectiveLastReadAt) return true
+          return new Date(lastMessage.created_at) > new Date(effectiveLastReadAt)
+        })()
 
         return {
           id: conv.id,
@@ -253,6 +293,12 @@ export default function Messages({
 
       setActiveConversation(conversation)
       setMessages(sortedMessages)
+
+      // Frontend-only "read" mark (so the badge can clear even if backend update fails)
+      const newest = sortedMessages[sortedMessages.length - 1]
+      if (newest?.created_at) {
+        setLocalLastReadAt(user.id, conversationId, newest.created_at)
+      }
 
       await markAsRead(conversationId)
 
