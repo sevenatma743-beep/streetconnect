@@ -7,15 +7,13 @@ import Layout from '../components/Layout'
 import Feed from '../components/Feed'
 import Profile from '../components/Profile'
 import Spots from '../components/Spots'
-import Challenges from '../components/Challenges'
-import Tracker from '../components/Tracker'
 import Shop from '../components/Shop'
 import Messages from '../components/Messages'
 import SearchUsers from '../components/SearchUsers'
 import Notifications from '../components/Notifications'
 import { useFeed } from '../hooks/useFeed'
 
-export default function HomePage() {
+export default function HomeClient() {
   const { user, loading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -122,8 +120,6 @@ export default function HomePage() {
       {activeTab === 'feed' && <Feed onUserClick={handleUserClick} feed={feed} />}
 
       {activeTab === 'spots' && <Spots />}
-      {activeTab === 'challenges' && <Challenges />}
-      {activeTab === 'tracker' && <Tracker />}
       {activeTab === 'shop' && <Shop />}
 
       {activeTab === 'search' && <SearchUsers onUserClick={handleUserClick} />}
