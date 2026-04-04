@@ -1,5 +1,5 @@
 'use client'
-import { Home, MapPin, Award, ShoppingCart, User, MessageCircle, Bell, Search } from 'lucide-react'
+import { Home, MapPin, ShoppingCart, User, MessageCircle, Bell, Search } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
@@ -37,8 +37,6 @@ export default function Layout({
   const tabs = [
     { id: 'feed', icon: Home, label: 'FEED' },
     { id: 'spots', icon: MapPin, label: 'SPOTS' },
-    { id: 'challenges', icon: Award, label: 'CHALLENGES' },
-    { id: 'tracker', icon: User, label: 'TRACKER' },
     { id: 'shop', icon: ShoppingCart, label: 'SHOP' },
     { id: 'profile', icon: User, label: 'PROFIL' }
   ]
