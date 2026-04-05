@@ -39,6 +39,7 @@ export default function Feed({ onUserClick, feed }) {
   const [expandedComments, setExpandedComments] = useState({})
   const [comments, setComments] = useState({})
   const [newComment, setNewComment] = useState({})
+  const [submittingComment, setSubmittingComment] = useState({})
 
   // Erreur locale (create post)
   const [localError, setLocalError] = useState(null)
@@ -194,8 +195,9 @@ export default function Feed({ onUserClick, feed }) {
   }
 
   async function handleAddComment(postId) {
-    if (!user || !newComment[postId]?.trim()) return
+    if (!user || !newComment[postId]?.trim() || submittingComment[postId]) return
 
+    setSubmittingComment(prev => ({ ...prev, [postId]: true }))
     try {
       const commentData = {
         post_id: postId,
@@ -228,6 +230,8 @@ export default function Feed({ onUserClick, feed }) {
       safeRevalidate()
     } catch (err) {
       console.error('Erreur ajout commentaire:', err)
+    } finally {
+      setSubmittingComment(prev => ({ ...prev, [postId]: false }))
     }
   }
 
@@ -604,10 +608,12 @@ export default function Feed({ onUserClick, feed }) {
                       className="flex-1 px-3 py-2 bg-street-900 border border-street-700 text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-street-accent placeholder-gray-500"
                     />
                     <button
+                      type="button"
                       onClick={() => handleAddComment(post.id)}
-                      className="w-full sm:w-auto px-4 py-2 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover text-sm transition"
+                      disabled={!!submittingComment[post.id]}
+                      className="w-full sm:w-auto px-4 py-2 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover text-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Publier
+                      {submittingComment[post.id] ? '...' : 'Publier'}
                     </button>
                   </div>
                 )}
