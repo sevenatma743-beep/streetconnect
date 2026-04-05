@@ -165,9 +165,6 @@ export default function Feed({ onUserClick, feed }) {
       if (!success) {
         // rollback via revalidate
         await safeRevalidate()
-      } else {
-        // revalidate léger
-        safeRevalidate()
       }
     } catch (err) {
       console.error('Erreur like/unlike:', err)

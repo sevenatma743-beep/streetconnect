@@ -55,11 +55,13 @@ export default function Messages({
   }, [messages])
 
   useEffect(() => {
-    if (activeConversation?.id) {
-      subscribeToMessages(activeConversation.id)
-    }
+    if (!activeConversation?.id) return
+
+    let cancelled = false
+    subscribeToMessages(activeConversation.id, () => cancelled)
 
     return () => {
+      cancelled = true
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current)
         channelRef.current = null
@@ -67,6 +69,25 @@ export default function Messages({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConversation?.id])
+
+  // Listener global pour rafraîchir l'inbox quand elle est visible (pas de conversation active)
+  useEffect(() => {
+    if (!user || activeConversation) return
+
+    const channel = supabase
+      .channel('inbox-global')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        () => { loadInbox() }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, activeConversation])
 
   function getMemberId(member) {
     return member?.user_id ?? member?.userId ?? null
@@ -269,7 +290,7 @@ export default function Messages({
     }
   }
 
-  function subscribeToMessages(convoId) {
+  function subscribeToMessages(convoId, isCancelled = () => false) {
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current)
       channelRef.current = null
@@ -290,7 +311,7 @@ export default function Messages({
           if (!inserted?.id) return
 
           if (inserted.sender_id === user.id) {
-            loadInbox()
+            if (!isCancelled()) loadInbox()
             return
           }
 
@@ -311,6 +332,8 @@ export default function Messages({
               .eq('id', inserted.id)
               .single()
 
+            if (isCancelled()) return
+
             if (error) {
               setMessages(prev =>
                 prev.some(m => m.id === inserted.id) ? prev : [...prev, inserted]
@@ -325,6 +348,7 @@ export default function Messages({
             loadInbox()
           } catch (err) {
             console.error('💥 Exception in realtime handler:', err)
+            if (isCancelled()) return
             setMessages(prev =>
               prev.some(m => m.id === inserted.id) ? prev : [...prev, inserted]
             )
@@ -371,7 +395,14 @@ export default function Messages({
 
       setMessages(prev => (prev.some(m => m.id === data.id) ? prev : [...prev, data]))
       setNewMessage('')
-      loadInbox()
+      setInbox(prev => prev.map(conv =>
+        conv.id !== activeConversation.id ? conv : {
+          ...conv,
+          lastMessage: data,
+          updatedAt: data.created_at,
+          unread: false
+        }
+      ))
     } catch (err) {
       console.error('💥 Exception in handleSendMessage:', err)
     } finally {

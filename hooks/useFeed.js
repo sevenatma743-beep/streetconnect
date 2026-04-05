@@ -7,7 +7,7 @@ const fetcher = async ([_, viewerId]) => {
 
 export function useFeed(viewerId) {
   const { data, error, isLoading, mutate } = useSWR(
-    ['feed', viewerId || null],
+    viewerId ? ['feed', viewerId] : null,
     fetcher,
     {
       revalidateOnFocus: false,
