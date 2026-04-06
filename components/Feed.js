@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { X, Image as ImageIcon } from 'lucide-react'
 import {
+  supabase,
   createPost,
   uploadPostMedia,
   likePost,
@@ -43,6 +44,32 @@ export default function Feed({ onUserClick, feed }) {
 
   // Erreur locale (create post)
   const [localError, setLocalError] = useState(null)
+
+  // Realtime likes
+  useEffect(() => {
+    if (!user || !mutate) return
+
+    const channel = supabase
+      .channel('feed-posts-likes')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'posts' },
+        (payload) => {
+          const { id, likes_count } = payload.new || {}
+          if (!id) return
+          mutate(
+            (prev) => (prev || []).map((p) =>
+              p.id !== id ? p : { ...p, likes_count }
+            ),
+            { revalidate: false }
+          )
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, mutate])
 
   async function safeRevalidate() {
     try {
