@@ -151,7 +151,9 @@ export default function Messages({
 
         const currentUserMember = members.find(m => getMemberId(m) === user.id)
         const unread =
-          lastMessage && currentUserMember?.last_read_at
+          lastMessage &&
+          lastMessage.sender_id !== user.id &&
+          currentUserMember?.last_read_at
             ? new Date(lastMessage.created_at) > new Date(currentUserMember.last_read_at)
             : false
 
