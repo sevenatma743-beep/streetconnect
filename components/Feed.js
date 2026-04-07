@@ -55,11 +55,11 @@ export default function Feed({ onUserClick, feed }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'posts' },
         (payload) => {
-          const { id, likes_count } = payload.new || {}
+          const { id, likes_count, comments_count } = payload.new || {}
           if (!id) return
           mutate(
             (prev) => (prev || []).map((p) =>
-              p.id !== id ? p : { ...p, likes_count }
+              p.id !== id ? p : { ...p, likes_count, comments_count }
             ),
             { revalidate: false }
           )
@@ -70,6 +70,28 @@ export default function Feed({ onUserClick, feed }) {
     return () => { supabase.removeChannel(channel) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, mutate])
+
+  // Realtime comments — un channel par post ouvert, re-fetch complet à chaque INSERT
+  useEffect(() => {
+    if (!user) return
+
+    const expandedPostIds = Object.keys(expandedComments).filter(id => expandedComments[id])
+    if (expandedPostIds.length === 0) return
+
+    const channels = expandedPostIds.map(postId =>
+      supabase
+        .channel(`comments-${postId}`)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'comments', filter: `post_id=eq.${postId}` },
+          () => { loadComments(postId) }
+        )
+        .subscribe()
+    )
+
+    return () => { channels.forEach(ch => supabase.removeChannel(ch)) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, expandedComments])
 
   async function safeRevalidate() {
     try {
