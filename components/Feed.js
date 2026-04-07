@@ -573,8 +573,10 @@ export default function Feed({ onUserClick, feed }) {
 
             {/* Caption */}
             {post.caption && (
-              <div className="p-4">
-                <p className="text-sm text-gray-300">{post.caption}</p>
+              <div className={!post.media_url ? 'bg-gradient-to-br from-street-700 to-street-900 min-h-[140px] flex items-center px-6 py-8' : 'px-4 pt-3 pb-1'}>
+                <p className={!post.media_url ? 'text-white text-lg font-semibold leading-relaxed' : 'text-sm text-gray-300'}>
+                  {post.caption}
+                </p>
               </div>
             )}
 

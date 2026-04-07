@@ -21,6 +21,7 @@ export default function PostPage() {
 
   // u = userId du profil source (pour charger la liste)
   const fromUserId = searchParams?.get('u') || null
+  const fromTab = searchParams?.get('from') || null
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -47,6 +48,10 @@ export default function PostPage() {
 
   // ✅ Retour logique (SPA + bon profil + navbar)
   function handleBack() {
+    if (fromTab === 'notifications') {
+      router.push('/?tab=notifications')
+      return
+    }
     if (fromUserId) {
       router.push(`/?tab=profile&u=${encodeURIComponent(fromUserId)}`)
       return
@@ -81,6 +86,26 @@ export default function PostPage() {
         .single()
 
       if (openedErr) throw openedErr
+
+      // Depuis notifications : afficher uniquement le post ciblé
+      if (fromTab === 'notifications') {
+        const [likesCountRes, iLikedRes, commentsRes] = await Promise.all([
+          supabase.from('likes').select('id', { count: 'exact', head: true }).eq('post_id', openedPost.id),
+          user?.id
+            ? supabase.from('likes').select('id').eq('post_id', openedPost.id).eq('user_id', user.id).maybeSingle()
+            : Promise.resolve({ data: null }),
+          supabase.from('comments').select('id, post_id, user_id, text, created_at, profiles:profiles(id, username, avatar_url)').eq('post_id', openedPost.id).order('created_at', { ascending: true })
+        ])
+        setPosts([{
+          ...openedPost,
+          likes_count: likesCountRes?.count || 0,
+          i_liked: !!iLikedRes?.data,
+          comments: commentsRes?.data || []
+        }])
+        setOwnerId(openedPost.user_id)
+        setLoading(false)
+        return
+      }
 
       // 2) Déterminer quel profil on doit afficher (priorité au param ?u=)
       const profileOwnerId = fromUserId || openedPost.user_id
@@ -371,7 +396,7 @@ export default function PostPage() {
 
             return (
               <div key={p.id} id={`post-${p.id}`} className="snap-start scroll-mt-16">
-                <div className="bg-black border border-street-800 rounded-2xl overflow-hidden">
+                <div className={`bg-black border rounded-2xl overflow-hidden ${p.id === postId ? 'border-street-accent' : 'border-street-800'}`}>
                   <div className="px-4 py-3 flex items-center justify-between border-b border-street-800 bg-black/60">
                     <div className="text-white font-semibold text-sm">
                       {author.username || 'Utilisateur'}
@@ -397,7 +422,9 @@ export default function PostPage() {
                         <img src={p.media_url} alt="post" className="w-full h-auto object-cover" />
                       )
                     ) : (
-                      <div className="p-4 text-white">{p.caption}</div>
+                      <div className="bg-gradient-to-br from-street-700 to-street-900 min-h-[140px] flex items-center px-6 py-8">
+                        <p className="text-white text-lg font-semibold leading-relaxed">{p.caption}</p>
+                      </div>
                     )}
                   </div>
 
