@@ -10,7 +10,8 @@ export default function Layout({
   children,
   hideHeader = false,
   hideBottomNav = false,
-  unreadMessagesCount = 0
+  unreadMessagesCount = 0,
+  unreadNotificationsCount = 0
 }) {
   const { user } = useAuth()
   const [profile, setProfile] = useState(null)
@@ -18,30 +19,6 @@ export default function Layout({
   useEffect(() => {
     if (user) getProfile()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
-
-  useEffect(() => {
-    if (!user) return
-
-    const channel = supabase
-      .channel('notifications-live')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${user.id}`
-        },
-        (payload) => {
-          console.log('[NOTIF]', payload.new)
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
   }, [user])
 
   async function getProfile() {
@@ -93,10 +70,13 @@ export default function Layout({
 
             <button
               onClick={() => setActiveTab('notifications')}
-              className="p-2 hover:bg-street-700 rounded-lg transition"
+              className="p-2 hover:bg-street-700 rounded-lg transition relative"
               aria-label="Notifications"
             >
               <Bell size={22} className="text-gray-400 hover:text-street-accent" />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+              )}
             </button>
 
             <button

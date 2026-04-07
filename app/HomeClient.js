@@ -40,6 +40,9 @@ export default function HomeClient() {
 
   // Badge messages non lus
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
+
+  // Badge notifications non lues
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0)
   const activeTabRef = useRef(activeTab)
   const conversationIdsRef = useRef([])
   const conversationOpenRef = useRef(false)
@@ -51,6 +54,38 @@ export default function HomeClient() {
   useEffect(() => {
     conversationOpenRef.current = messagesIsInConversation
   }, [messagesIsInConversation])
+
+  // Init + realtime badge notifications non lues
+  useEffect(() => {
+    if (!user) return
+
+    async function fetchUnreadNotifications() {
+      const { count } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('is_read', false)
+      setUnreadNotificationsCount(count || 0)
+    }
+    fetchUnreadNotifications()
+
+    const channel = supabase
+      .channel('notifications-badge')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          if (!payload.new) return
+          if (activeTabRef.current === 'notifications') return
+          setUnreadNotificationsCount(prev => prev + 1)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user])
 
   // ✅ Marquer le boot une seule fois quand le loading initial est terminé
   useEffect(() => {
@@ -169,6 +204,7 @@ export default function HomeClient() {
   }
 
   function handleOpenNotifications() {
+    setUnreadNotificationsCount(0)
     setActiveTab('notifications')
   }
 
@@ -185,11 +221,13 @@ export default function HomeClient() {
       activeTab={activeTab}
       setActiveTab={(tab) => {
         if (tab === 'profile') setViewingUserId(null)
+        if (tab === 'notifications') setUnreadNotificationsCount(0)
         setActiveTab(tab)
       }}
       hideHeader={hideLayoutHeader}
       hideBottomNav={hideBottomNav}
       unreadMessagesCount={unreadMessagesCount}
+      unreadNotificationsCount={unreadNotificationsCount}
       onOpenMessages={() => handleOpenMessages(activeTab)}
       onOpenNotifications={handleOpenNotifications}
       onOpenSearch={handleOpenSearch}

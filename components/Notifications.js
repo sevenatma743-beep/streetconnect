@@ -29,6 +29,11 @@ export default function Notifications() {
         (payload) => {
           console.log('[NOTIF SCREEN]', payload.new)
           setNotifications((prev) => [payload.new, ...prev.slice()])
+          supabase
+            .from('notifications')
+            .update({ is_read: true })
+            .eq('id', payload.new.id)
+            .then(() => {})
         }
       )
       .subscribe()
@@ -42,7 +47,7 @@ export default function Notifications() {
     setLoading(true)
     const { data, error } = await supabase
       .from('notifications')
-      .select('id, type, actor_id, post_id, created_at')
+      .select('id, type, actor_id, post_id, created_at, is_read')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(30)
@@ -54,6 +59,12 @@ export default function Notifications() {
       setNotifications(data || [])
     }
     setLoading(false)
+
+    await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('user_id', user.id)
+      .eq('is_read', false)
   }
 
   return (
