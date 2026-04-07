@@ -13,6 +13,31 @@ export default function Notifications() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
+  useEffect(() => {
+    if (!user) return
+
+    const channel = supabase
+      .channel('notifications-screen')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          console.log('[NOTIF SCREEN]', payload.new)
+          setNotifications((prev) => [payload.new, ...prev.slice()])
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user])
+
   async function loadNotifications() {
     setLoading(true)
     const { data, error } = await supabase
