@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Layout from '../components/Layout'
@@ -12,6 +12,7 @@ import Messages from '../components/Messages'
 import SearchUsers from '../components/SearchUsers'
 import Notifications from '../components/Notifications'
 import { useFeed } from '../hooks/useFeed'
+import { supabase } from '../lib/supabase'
 
 export default function HomeClient() {
   const { user, loading } = useAuth()
@@ -37,12 +38,87 @@ export default function HomeClient() {
   // know if we are inside a conversation screen
   const [messagesIsInConversation, setMessagesIsInConversation] = useState(false)
 
+  // Badge messages non lus
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
+  const activeTabRef = useRef(activeTab)
+  const conversationIdsRef = useRef([])
+  const conversationOpenRef = useRef(false)
+
+  useEffect(() => {
+    activeTabRef.current = activeTab
+  }, [activeTab])
+
+  useEffect(() => {
+    conversationOpenRef.current = messagesIsInConversation
+  }, [messagesIsInConversation])
+
   // ✅ Marquer le boot une seule fois quand le loading initial est terminé
   useEffect(() => {
     if (!loading && !hasBooted) setHasBooted(true)
   }, [loading, hasBooted])
 
-  // ✅ Lire l’URL (?tab=...&u=...) pour les retours depuis /p/[id], /followers, /following
+  // Listener badge messages non lus
+  useEffect(() => {
+    if (!user) return
+
+    let channel
+
+    async function setupMessagesListener() {
+      const { data: members } = await supabase
+        .from('conversation_members')
+        .select('conversation_id, last_read_at')
+        .eq('user_id', user.id)
+
+      const memberList = members || []
+      conversationIdsRef.current = memberList.map(m => m.conversation_id)
+
+      // Initialisation du badge depuis les non-lus existants
+      if (conversationIdsRef.current.length > 0) {
+        const { data: existingMsgs } = await supabase
+          .from('messages')
+          .select('conversation_id, created_at')
+          .in('conversation_id', conversationIdsRef.current)
+          .neq('sender_id', user.id)
+
+        const lastReadMap = Object.fromEntries(
+          memberList.map(m => [m.conversation_id, m.last_read_at])
+        )
+
+        const unreadConvs = new Set()
+        for (const msg of existingMsgs || []) {
+          const lastRead = lastReadMap[msg.conversation_id]
+          if (lastRead && new Date(msg.created_at) > new Date(lastRead)) {
+            unreadConvs.add(msg.conversation_id)
+          }
+        }
+        setUnreadMessagesCount(unreadConvs.size)
+      }
+
+      channel = supabase
+        .channel('global-messages-badge')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'messages' },
+          (payload) => {
+            const msg = payload.new
+            if (!msg) return
+            if (msg.sender_id === user.id) return
+            if (!conversationIdsRef.current.includes(msg.conversation_id)) return
+            if (activeTabRef.current === 'messages' || conversationOpenRef.current) return
+            setUnreadMessagesCount(prev => prev + 1)
+          }
+        )
+        .subscribe()
+    }
+
+    setupMessagesListener()
+
+    return () => {
+      if (channel) supabase.removeChannel(channel)
+    }
+  }, [user])
+
+  // ✅ Lire l'URL (?tab=...&u=...) pour les retours depuis /p/[id], /followers, /following
   useEffect(() => {
     const tab = searchParams?.get('tab')
     const u = searchParams?.get('u')
@@ -113,6 +189,7 @@ export default function HomeClient() {
       }}
       hideHeader={hideLayoutHeader}
       hideBottomNav={hideBottomNav}
+      unreadMessagesCount={unreadMessagesCount}
       onOpenMessages={() => handleOpenMessages(activeTab)}
       onOpenNotifications={handleOpenNotifications}
       onOpenSearch={handleOpenSearch}
@@ -136,6 +213,7 @@ export default function HomeClient() {
           }}
           onClearInitialConversation={() => setMessagesInitialConversationId(null)}
           onConversationModeChange={(isOpen) => setMessagesIsInConversation(isOpen)}
+          onConversationRead={() => setUnreadMessagesCount(prev => Math.max(0, prev - 1))}
         />
       )}
 

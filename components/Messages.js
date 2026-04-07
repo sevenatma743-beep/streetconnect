@@ -9,7 +9,8 @@ export default function Messages({
   returnTab = 'feed',
   onExit,
   onClearInitialConversation,
-  onConversationModeChange // ✅ NEW
+  onConversationModeChange,
+  onConversationRead
 }) {
   const { user } = useAuth()
 
@@ -266,7 +267,11 @@ export default function Messages({
       setActiveConversation(conversation)
       setMessages(sortedMessages)
 
+      const wasUnread = inbox.find(c => c.id === conversationId)?.unread === true
       await markAsRead(conversationId)
+      if (wasUnread && typeof onConversationRead === 'function') {
+        onConversationRead()
+      }
 
       if (typeof onClearInitialConversation === 'function') {
         onClearInitialConversation()
@@ -278,12 +283,7 @@ export default function Messages({
 
   async function markAsRead(conversationId) {
     try {
-      const { error } = await supabase
-        .from('conversation_members')
-        .update({ last_read_at: new Date().toISOString() })
-        .eq('conversation_id', conversationId)
-        .eq('user_id', user.id)
-
+      const { error } = await supabase.rpc('mark_conversation_read', { conv_id: conversationId })
       if (error) console.error('❌ Error marking as read:', error)
     } catch (err) {
       console.error('💥 Exception in markAsRead:', err)

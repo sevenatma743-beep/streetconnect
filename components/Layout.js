@@ -9,7 +9,8 @@ export default function Layout({
   setActiveTab,
   children,
   hideHeader = false,
-  hideBottomNav = false
+  hideBottomNav = false,
+  unreadMessagesCount = 0
 }) {
   const { user } = useAuth()
   const [profile, setProfile] = useState(null)
@@ -100,10 +101,13 @@ export default function Layout({
 
             <button
               onClick={() => setActiveTab('messages')}
-              className="p-2 hover:bg-street-700 rounded-lg transition"
+              className="p-2 hover:bg-street-700 rounded-lg transition relative"
               aria-label="Messages"
             >
               <MessageCircle size={22} className="text-gray-400 hover:text-street-accent" />
+              {unreadMessagesCount > 0 && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+              )}
             </button>
           </div>
         </header>
