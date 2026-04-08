@@ -1,17 +1,43 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import { useRouter } from 'next/navigation'
+import { supabase } from '../../lib/supabase'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function AuthPage() {
-  const [mode, setMode] = useState('login')
+  const searchParams = useSearchParams()
+  const [mode, setMode] = useState(searchParams.get('mode') === 'login' ? 'login' : 'signup')
+
+  useEffect(() => {
+    if (searchParams.get('mode') === 'login') {
+      setMode('login')
+    }
+  }, [searchParams])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [resetSent, setResetSent] = useState(false)
   const { signIn, signUp } = useAuth()
   const router = useRouter()
+
+  const handleResetPassword = async () => {
+    setError('')
+    setResetSent(false)
+    if (!email) {
+      setError('Saisis ton email d\'abord')
+      return
+    }
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset`
+    })
+    if (error) {
+      setError(error.message || 'Une erreur est survenue')
+    } else {
+      setResetSent(true)
+    }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -35,28 +61,36 @@ export default function AuthPage() {
           throw new Error('Le mot de passe doit contenir au moins 6 caractères')
         }
 
+        // Pre-check : username déjà pris ?
+        const { data: existing } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', username)
+          .maybeSingle()
+        if (existing) {
+          throw new Error('Nom d\'utilisateur déjà utilisé')
+        }
+
         const { data, error } = await signUp(email, password, username)
         if (error) throw error
         
-        // Vérifier si l'email doit être confirmé
         if (data?.user && !data.session) {
-          // Email confirmation requise
-          setError('✅ Compte créé ! Vérifiez votre email pour confirmer votre compte.')
-          setTimeout(() => {
-            setMode('login')
-            setError('')
-          }, 5000)
+          setError('✅ Compte créé ! Vérifiez votre email pour confirmer votre inscription.')
         } else {
-          // Connexion automatique (si confirm email désactivé)
-          setError('✅ Compte créé avec succès !')
-          setTimeout(() => {
-            router.push('/')
-          }, 1500)
+          router.replace('/')
         }
       }
     } catch (err) {
       console.error('Erreur auth:', err)
-      setError(err.message || 'Une erreur est survenue')
+      const isUsernameTaken =
+        err.message === 'Nom d\'utilisateur déjà utilisé' ||
+        err.code === '23505' ||
+        err.message?.includes('unique') ||
+        err.message?.includes('duplicate')
+      setError(isUsernameTaken && mode === 'signup'
+        ? 'Nom d\'utilisateur déjà utilisé'
+        : err.message || 'Une erreur est survenue'
+      )
     } finally {
       setLoading(false)
     }
@@ -193,10 +227,17 @@ export default function AuthPage() {
 
           {/* Footer */}
           {mode === 'login' && (
-            <div className="mt-6 text-center">
-              <button className="text-sm text-gray-400 hover:text-street-accent transition-colors">
+            <div className="mt-6 text-center space-y-2">
+              <button
+                type="button"
+                onClick={handleResetPassword}
+                className="text-sm text-gray-400 hover:text-street-accent transition-colors"
+              >
                 Mot de passe oublié ?
               </button>
+              {resetSent && (
+                <p className="text-xs text-green-400">Email envoyé — vérifie ta boîte mail</p>
+              )}
             </div>
           )}
         </div>

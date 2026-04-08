@@ -166,7 +166,7 @@ export default function HomeClient() {
 
   // Redirect if not logged (quand on a une info fiable)
   if (!loading && !user) {
-    router.push('/auth')
+    router.push('/auth?mode=login')
     return null
   }
 

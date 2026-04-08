@@ -223,8 +223,12 @@ export default function Profile({
 
   async function handleLogout() {
     setShowMoreMenu(false)
-    await signOut()
-    router.push('/auth')
+    const { error } = await signOut()
+    if (error) {
+      setError('Erreur lors de la déconnexion. Réessaie.')
+      return
+    }
+    router.push('/auth?mode=login')
   }
 
   async function handleMessage() {

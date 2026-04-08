@@ -37,14 +37,16 @@ Interdits sans validation :
 
 Dans cet ordre :
 
+> Tous les fichiers ci-dessous sont à la **racine du projet** (`street-connect V1/`), sauf indication contraire.
+
 1. `CLAUDE.md` — règles générales et principes produit
 2. `AGENTS.md` — définition des rôles
 3. `PROJECT_CONTEXT.md` — vision, stack, état, architecture validée
 4. `SUPABASE_CONTEXT.md` — tables, RLS, triggers, risques
 5. `ROADMAP.md` — phases et état d'avancement
 6. `WORKLOG.md` — journal des interventions
-7. `docs/REFERENCE_STACK.md` — bonnes pratiques techniques
-8. `docs/SESSION_BOOT.md` — ce fichier
+7. `street-connect-pro/docs/REFERENCE_STACK.md` — bonnes pratiques techniques
+8. `street-connect-pro/docs/SESSION_BOOT.md` — ce fichier
 
 ---
 

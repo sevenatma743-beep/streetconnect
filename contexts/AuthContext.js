@@ -80,21 +80,7 @@ export function AuthProvider({ children }) {
 
       if (error) throw error
 
-      // 2. Créer le profil
-      if (data.user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: data.user.id,
-            username: username,
-            email: email
-          })
-
-        if (profileError) {
-          console.error('Erreur création profil:', profileError)
-          // On ne bloque pas pour ça
-        }
-      }
+      // Le profil est créé automatiquement par le trigger handle_new_user()
 
       return { data, error: null }
     } catch (error) {
