@@ -82,6 +82,25 @@ export default function Profile({
   }, [user, profile])
 
   useEffect(() => {
+    if (!profileUserId) return
+
+    const channel = supabase
+      .channel(`profile-follows-${profileUserId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'profiles',
+        filter: `id=eq.${profileUserId}`
+      }, (payload) => {
+        setFollowersCount(payload.new.followers_count)
+        setFollowingCount(payload.new.following_count)
+      })
+      .subscribe()
+
+    return () => supabase.removeChannel(channel)
+  }, [profileUserId])
+
+  useEffect(() => {
     function handleClickOutside(e) {
       if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) setShowMoreMenu(false)
       if (followingMenuRef.current && !followingMenuRef.current.contains(e.target)) setShowFollowingMenu(false)
@@ -149,17 +168,19 @@ export default function Profile({
     if (!user || !profile) return
     if (followLoading) return
 
+    const previous = isFollowingUser
+    setIsFollowingUser(!previous)
     setFollowLoading(true)
     try {
-      if (isFollowingUser) {
+      if (previous) {
         await unfollowUser(profile.id, user.id)
-        setIsFollowingUser(false)
       } else {
         await followUser(profile.id, user.id)
-        setIsFollowingUser(true)
       }
       await checkFollowStatus()
       await loadFollowCounts(profile.id)
+    } catch {
+      setIsFollowingUser(previous)
     } finally {
       setFollowLoading(false)
     }
@@ -177,7 +198,10 @@ export default function Profile({
 
     try {
       let avatarUrl = profile.avatar_url
-      if (newAvatar) avatarUrl = await uploadAvatar(newAvatar, user.id)
+      if (newAvatar) {
+        const uploaded = await uploadAvatar(newAvatar, user.id)
+        if (uploaded) avatarUrl = uploaded
+      }
 
       const updated = await updateProfile(user.id, {
         username: editedUsername,
@@ -189,6 +213,8 @@ export default function Profile({
         setProfile(updated)
         setIsEditing(false)
         setNewAvatar(null)
+      } else {
+        setError('Erreur lors de la sauvegarde')
       }
     } finally {
       setUpdating(false)

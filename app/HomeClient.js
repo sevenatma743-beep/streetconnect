@@ -46,6 +46,7 @@ export default function HomeClient() {
   const activeTabRef = useRef(activeTab)
   const conversationIdsRef = useRef([])
   const conversationOpenRef = useRef(false)
+  const messagesChannelRef = useRef(null)
 
   useEffect(() => {
     activeTabRef.current = activeTab
@@ -96,8 +97,6 @@ export default function HomeClient() {
   useEffect(() => {
     if (!user) return
 
-    let channel
-
     async function setupMessagesListener() {
       const { data: members } = await supabase
         .from('conversation_members')
@@ -129,7 +128,7 @@ export default function HomeClient() {
         setUnreadMessagesCount(unreadConvs.size)
       }
 
-      channel = supabase
+      messagesChannelRef.current = supabase
         .channel('global-messages-badge')
         .on(
           'postgres_changes',
@@ -149,7 +148,7 @@ export default function HomeClient() {
     setupMessagesListener()
 
     return () => {
-      if (channel) supabase.removeChannel(channel)
+      if (messagesChannelRef.current) supabase.removeChannel(messagesChannelRef.current)
     }
   }, [user])
 
