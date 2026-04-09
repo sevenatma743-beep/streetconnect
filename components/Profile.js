@@ -231,6 +231,31 @@ export default function Profile({
     router.push('/auth?mode=login')
   }
 
+  async function handleDeleteAccount() {
+    setShowMoreMenu(false)
+    const confirmed = window.confirm('Supprimer définitivement ton compte ? Cette action est irréversible.')
+    if (!confirmed) return
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) {
+      setError('Session expirée. Reconnecte-toi.')
+      return
+    }
+
+    const res = await fetch('/api/delete-account', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.access_token}` }
+    })
+
+    if (!res.ok) {
+      setError('Erreur lors de la suppression. Réessaie.')
+      return
+    }
+
+    await signOut()
+    router.push('/auth')
+  }
+
   async function handleMessage() {
     if (!isMutualFollow || !profile?.id) return
 
@@ -314,6 +339,12 @@ export default function Profile({
                   >
                     <LogOut size={16} />
                     Se déconnecter
+                  </button>
+                  <button
+                    onClick={handleDeleteAccount}
+                    className="w-full flex items-center gap-2 px-4 py-3 text-red-400 hover:bg-street-700 border-t border-street-700"
+                  >
+                    Supprimer mon compte
                   </button>
                 </div>
               )}
