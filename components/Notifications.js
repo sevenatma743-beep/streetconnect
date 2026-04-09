@@ -96,7 +96,7 @@ export default function Notifications({ onUserClick }) {
   function handleCardClick(notif) {
     if ((notif.type === 'like' || notif.type === 'comment') && notif.post_id) {
       router.push(`/p/${notif.post_id}?from=notifications`)
-    } else {
+    } else if (notif.actor_id && notif.actor) {
       onUserClick(notif.actor_id)
     }
   }
@@ -140,8 +140,8 @@ export default function Notifications({ onUserClick }) {
               >
                 {/* Avatar */}
                 <div
-                  onClick={(e) => { e.stopPropagation(); onUserClick(notif.actor_id) }}
-                  className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-street-700 flex items-center justify-center cursor-pointer"
+                  onClick={notif.actor ? (e) => { e.stopPropagation(); onUserClick(notif.actor_id) } : undefined}
+                  className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-street-700 flex items-center justify-center ${notif.actor ? 'cursor-pointer' : 'cursor-default'}`}
                 >
                   {avatarUrl ? (
                     <img src={avatarUrl} alt={username} className="w-full h-full object-cover" />
@@ -154,8 +154,8 @@ export default function Notifications({ onUserClick }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-white text-sm leading-snug">
                     <span
-                      onClick={(e) => { e.stopPropagation(); onUserClick(notif.actor_id) }}
-                      className="font-semibold cursor-pointer hover:underline"
+                      onClick={notif.actor ? (e) => { e.stopPropagation(); onUserClick(notif.actor_id) } : undefined}
+                      className={`font-semibold ${notif.actor ? 'cursor-pointer hover:underline' : ''}`}
                     >
                       {username || 'Quelqu\'un'}
                     </span>
