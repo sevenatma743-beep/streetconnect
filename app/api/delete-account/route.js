@@ -31,40 +31,50 @@ export async function POST(request) {
     const userId = user.id
 
     // Delete user data in order (foreign key constraints)
-    // 1. Delete comments
-    const { error: commentsError } = await supabaseAdmin
-      .from('comments')
-      .delete()
-      .eq('user_id', userId)
-    
-    if (commentsError) {
-      console.error('Error deleting comments:', commentsError)
-      // Continue anyway - column might not exist
-    }
 
-    // 2. Delete posts
+    // 1. Delete likes left by user on other posts
+    await supabaseAdmin.from('likes').delete().eq('user_id', userId)
+
+    // 2. Delete follows where user is follower or followed
+    await supabaseAdmin.from('follows').delete().eq('follower_id', userId)
+    await supabaseAdmin.from('follows').delete().eq('following_id', userId)
+
+    // 3. Delete notifications involving the user (as actor or recipient)
+    await supabaseAdmin.from('notifications').delete().eq('actor_id', userId)
+    await supabaseAdmin.from('notifications').delete().eq('user_id', userId)
+
+    // 4. Delete messages sent by user
+    await supabaseAdmin.from('messages').delete().eq('sender_id', userId)
+
+    // 5. Delete conversation memberships
+    await supabaseAdmin.from('conversation_members').delete().eq('user_id', userId)
+
+    // 6. Delete comments
+    await supabaseAdmin.from('comments').delete().eq('user_id', userId)
+
+    // 7. Delete posts
     const { error: postsError } = await supabaseAdmin
       .from('posts')
       .delete()
       .eq('user_id', userId)
-    
+
     if (postsError) {
       console.error('Error deleting posts:', postsError)
       return NextResponse.json({ error: 'Failed to delete posts' }, { status: 500 })
     }
 
-    // 3. Delete profile
+    // 8. Delete profile
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .delete()
       .eq('id', userId)
-    
+
     if (profileError) {
       console.error('Error deleting profile:', profileError)
       return NextResponse.json({ error: 'Failed to delete profile' }, { status: 500 })
     }
 
-    // 4. Delete auth user
+    // 9. Delete auth user
     const { error: deleteUserError } = await supabaseAdmin.auth.admin.deleteUser(userId)
     
     if (deleteUserError) {

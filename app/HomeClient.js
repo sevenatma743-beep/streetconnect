@@ -30,6 +30,7 @@ export default function HomeClient() {
 
   // 🔙 Pour retour intelligent quand on ouvre un profil depuis search / notifications / feed…
   const [profileReturnTab, setProfileReturnTab] = useState('feed')
+  const [profileReturnConversationId, setProfileReturnConversationId] = useState(null)
 
   // Messages state-based
   const [messagesInitialConversationId, setMessagesInitialConversationId] = useState(null)
@@ -179,15 +180,21 @@ export default function HomeClient() {
     )
   }
 
-  function handleUserClick(userId) {
+  function handleUserClick(userId, conversationId = null) {
     setProfileReturnTab(activeTab || 'feed')
+    setProfileReturnConversationId(conversationId)
     setViewingUserId(userId)
     setActiveTab('profile')
   }
 
   function handleBackFromProfile() {
     setViewingUserId(null)
-    setActiveTab(profileReturnTab || 'feed')
+    if (profileReturnConversationId) {
+      setProfileReturnConversationId(null)
+      handleOpenConversation(profileReturnConversationId, 'messages')
+    } else {
+      setActiveTab(profileReturnTab || 'feed')
+    }
   }
 
   function handleOpenConversation(conversationId, fromTab = 'feed') {
@@ -251,6 +258,7 @@ export default function HomeClient() {
           onClearInitialConversation={() => setMessagesInitialConversationId(null)}
           onConversationModeChange={(isOpen) => setMessagesIsInConversation(isOpen)}
           onConversationRead={() => setUnreadMessagesCount(prev => Math.max(0, prev - 1))}
+          onUserClick={handleUserClick}
         />
       )}
 

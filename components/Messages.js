@@ -10,7 +10,8 @@ export default function Messages({
   onExit,
   onClearInitialConversation,
   onConversationModeChange,
-  onConversationRead
+  onConversationRead,
+  onUserClick
 }) {
   const { user } = useAuth()
 
@@ -515,10 +516,14 @@ export default function Messages({
           <img
             src={displayAvatar}
             alt={displayName}
-            className="w-10 h-10 rounded-full border-2 border-street-accent"
+            className="w-10 h-10 rounded-full border-2 border-street-accent cursor-pointer"
+            onClick={() => onUserClick?.(activeConversation.otherUser?.id, activeConversation.id)}
           />
           <div className="flex-1">
-            <p className="font-bold text-white">{displayName}</p>
+            <p
+              className="font-bold text-white cursor-pointer"
+              onClick={() => onUserClick?.(activeConversation.otherUser?.id, activeConversation.id)}
+            >{displayName}</p>
             <p className="text-xs text-gray-400">
               {isInvalidConversation ? '⚠️ Conversation invalide (1 membre)' : `@${displayName}`}
             </p>

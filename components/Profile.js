@@ -50,7 +50,9 @@ export default function Profile({
   const [editedBio, setEditedBio] = useState('')
   const [editedUsername, setEditedUsername] = useState('')
   const [newAvatar, setNewAvatar] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState(null)
   const [updating, setUpdating] = useState(false)
+  const [formError, setFormError] = useState(null)
 
   // follow state
   const [isFollowingUser, setIsFollowingUser] = useState(false)
@@ -195,6 +197,7 @@ export default function Profile({
   async function handleSaveProfile() {
     if (!user) return
     setUpdating(true)
+    setFormError(null)
 
     try {
       let avatarUrl = profile.avatar_url
@@ -214,7 +217,13 @@ export default function Profile({
         setIsEditing(false)
         setNewAvatar(null)
       } else {
-        setError('Erreur lors de la sauvegarde')
+        setFormError('Erreur lors de la sauvegarde')
+      }
+    } catch (e) {
+      if (e?.message?.includes('profiles_username_key')) {
+        setFormError('Nom d\'utilisateur déjà utilisé')
+      } else {
+        setFormError('Erreur lors de la sauvegarde')
       }
     } finally {
       setUpdating(false)
@@ -358,18 +367,29 @@ export default function Profile({
         <div className="flex items-center gap-4">
           <div className="relative">
             <img
-              src={profile.avatar_url || 'https://placehold.co/120'}
+              src={isEditing && previewUrl ? previewUrl : (profile.avatar_url || 'https://placehold.co/120')}
               className="w-20 h-20 rounded-full border-2 border-street-accent object-cover"
               alt="avatar"
+              onLoad={() => {
+                if (!isEditing && previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null) }
+              }}
+              onError={() => {
+                if (!isEditing && previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null) }
+              }}
             />
             {isMyProfile && isEditing && (
               <label className="absolute -bottom-2 -right-2 bg-street-accent text-black text-xs font-bold px-2 py-1 rounded-lg cursor-pointer">
-                Photo
+                {profile.avatar_url ? 'Modifier' : 'Ajouter'}
                 <input
                   type="file"
                   className="hidden"
                   accept="image/*"
-                  onChange={(e) => setNewAvatar(e.target.files?.[0] || null)}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null
+                    setNewAvatar(file)
+                    if (previewUrl) URL.revokeObjectURL(previewUrl)
+                    setPreviewUrl(file ? URL.createObjectURL(file) : null)
+                  }}
                 />
               </label>
             )}
@@ -415,6 +435,9 @@ export default function Profile({
                 className="w-full min-h-[90px] bg-street-900 border border-street-700 rounded-xl px-3 py-2 text-white outline-none"
                 placeholder="Bio"
               />
+              {formError && (
+                <div className="text-red-400 text-sm text-center">{formError}</div>
+              )}
               <div className="flex gap-2">
                 <button
                   onClick={handleSaveProfile}
@@ -427,6 +450,7 @@ export default function Profile({
                   onClick={() => {
                     setIsEditing(false)
                     setNewAvatar(null)
+                    setFormError(null)
                     setEditedBio(profile.bio || '')
                     setEditedUsername(profile.username || '')
                   }}
