@@ -1,10 +1,10 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function AuthPage() {
+function AuthContent() {
   const searchParams = useSearchParams()
   const [mode, setMode] = useState(searchParams.get('mode') === 'login' ? 'login' : 'signup')
 
@@ -252,5 +252,13 @@ export default function AuthPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={null}>
+      <AuthContent />
+    </Suspense>
   )
 }
