@@ -36,6 +36,7 @@ export default function Notifications({ onUserClick }) {
             .select('username, avatar_url')
             .eq('id', notif.actor_id)
             .single()
+          if (!actor) return
           setNotifications((prev) => [{ ...notif, actor }, ...prev.slice()])
           supabase
             .from('notifications')
@@ -74,7 +75,7 @@ export default function Notifications({ onUserClick }) {
           .in('id', actorIds)
         for (const p of profiles || []) actorMap[p.id] = p
       }
-      setNotifications(rows.map(n => ({ ...n, actor: actorMap[n.actor_id] || null })))
+      setNotifications(rows.map(n => ({ ...n, actor: actorMap[n.actor_id] || null })).filter(n => n.actor !== null))
     }
     setLoading(false)
 
