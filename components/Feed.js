@@ -28,13 +28,33 @@ export default function Feed({ onUserClick, feed }) {
   // États pour nouveau post
   const [newPostCaption, setNewPostCaption] = useState('')
   const [newPostMedia, setNewPostMedia] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState(null)
   const [posting, setPosting] = useState(false)
 
   // Modal composer (mobile uniquement)
   const [showComposerModal, setShowComposerModal] = useState(false)
+  const [composerStep, setComposerStep] = useState('media')
 
-  // Ref pour input file
+  // Ref pour input file (barre compacte mobile)
   const fileInputRef = useRef(null)
+  // Ref pour input file dans la modal (évite conflit de ref)
+  const modalFileInputRef = useRef(null)
+
+  function setMediaWithPreview(file) {
+    setPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null })
+    setNewPostMedia(file)
+    if (file) setPreviewUrl(URL.createObjectURL(file))
+  }
+
+  function resetComposer() {
+    setPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null })
+    setNewPostMedia(null)
+    setNewPostCaption('')
+    setShowComposerModal(false)
+    setComposerStep('media')
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (modalFileInputRef.current) modalFileInputRef.current.value = ''
+  }
 
   // États pour commentaires
   const [expandedComments, setExpandedComments] = useState({})
@@ -170,10 +190,7 @@ export default function Feed({ onUserClick, feed }) {
         return
       }
 
-      setNewPostCaption('')
-      setNewPostMedia(null)
-      setShowComposerModal(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
+      resetComposer()
 
       // revalidate feed
       await safeRevalidate()
@@ -373,7 +390,7 @@ export default function Feed({ onUserClick, feed }) {
             className="w-10 h-10 rounded-full border-2 border-street-accent"
           />
           <div
-            onClick={() => setShowComposerModal(true)}
+            onClick={() => { setComposerStep('caption'); setShowComposerModal(true) }}
             className="flex-1 bg-street-900 border border-street-700 rounded-full px-4 py-2 text-gray-500 cursor-pointer hover:border-street-accent transition"
           >
             Quoi de neuf ?
@@ -389,7 +406,8 @@ export default function Feed({ onUserClick, feed }) {
             type="file"
             accept="image/*,video/*"
             onChange={(e) => {
-              setNewPostMedia(e.target.files?.[0] || null)
+              setComposerStep('media')
+              setMediaWithPreview(e.target.files?.[0] || null)
               setShowComposerModal(true)
             }}
             className="hidden"
@@ -437,67 +455,130 @@ export default function Feed({ onUserClick, feed }) {
         <div className="fixed inset-0 bg-black/90 z-[9999] flex items-end md:items-center md:justify-center">
           <div
             className="bg-street-800 rounded-t-2xl md:rounded-2xl w-full md:max-w-lg flex flex-col overflow-hidden relative z-[10000]"
-            style={{ maxHeight: 'calc(100vh - 90px)' }}
+            style={{ maxHeight: 'calc(100vh - 16px)' }}
           >
+            {/* Header */}
             <div className="sticky top-0 bg-street-800 border-b border-street-700 p-4 flex items-center justify-between z-10 flex-shrink-0">
-              <h3 className="text-lg font-bold text-white">Créer un post</h3>
-              <button
-                onClick={() => setShowComposerModal(false)}
-                className="text-gray-400 hover:text-white"
-              >
+              <h3 className="text-lg font-bold text-white">
+                {composerStep === 'media' ? 'Choisir un média' : 'Ajouter une légende'}
+              </h3>
+              <button onClick={resetComposer} className="text-gray-400 hover:text-white">
                 <X size={24} />
               </button>
             </div>
 
-            <form onSubmit={handleCreatePost} className="flex flex-col flex-1 min-h-0">
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                <textarea
-                  value={newPostCaption}
-                  onChange={(e) => setNewPostCaption(e.target.value)}
-                  placeholder="Quoi de neuf ?"
-                  className="w-full p-3 bg-street-900 border border-street-700 text-white rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-street-accent placeholder-gray-500"
-                  rows={4}
-                  autoFocus
-                />
-
-                <input
-                  type="file"
-                  accept="image/*,video/*"
-                  onChange={(e) => setNewPostMedia(e.target.files?.[0] || null)}
-                  className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-street-700 file:text-white hover:file:bg-street-600"
-                />
-
-                {newPostMedia && (
-                  <div className="text-sm text-gray-400">
-                    Fichier: {newPostMedia.name}
+            {/* Étape 1 — Média */}
+            {composerStep === 'media' && (
+              <div className="flex flex-col flex-1 min-h-0">
+                <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+                  <input
+                    ref={modalFileInputRef}
+                    type="file"
+                    accept="image/*,video/*"
+                    onChange={(e) => setMediaWithPreview(e.target.files?.[0] || null)}
+                    className="hidden"
+                  />
+                  {!previewUrl ? (
+                    <button
+                      type="button"
+                      onClick={() => modalFileInputRef.current?.click()}
+                      className="flex-1 min-h-[300px] flex flex-col items-center justify-center gap-3 border-2 border-dashed border-street-600 rounded-xl text-gray-400 hover:border-street-accent hover:text-street-accent transition"
+                    >
+                      <ImageIcon size={40} />
+                      <span className="font-semibold text-base">Choisir une photo ou une vidéo</span>
+                    </button>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {newPostMedia?.type.startsWith('image/') && (
+                        <img src={previewUrl} alt="Preview" className="w-full rounded-xl object-contain max-h-[60vh]" />
+                      )}
+                      {newPostMedia?.type.startsWith('video/') && (
+                        <video src={previewUrl} controls className="w-full rounded-xl max-h-[60vh]" />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => { setMediaWithPreview(null); if (modalFileInputRef.current) modalFileInputRef.current.value = '' }}
+                        className="text-sm text-gray-400 hover:text-white underline text-center"
+                      >
+                        Changer de fichier
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div
+                  className="sticky bottom-0 bg-street-800 border-t border-street-700 p-4 flex flex-col gap-2 flex-shrink-0"
+                  style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+                >
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={resetComposer}
+                      className="flex-1 px-4 py-3 bg-street-700 text-white font-bold rounded-lg hover:bg-street-600 transition"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!newPostMedia}
+                      onClick={() => setComposerStep('caption')}
+                      className="flex-1 px-4 py-3 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    >
+                      Continuer
+                    </button>
                   </div>
-                )}
-
-                {(localError || error) && (
-                  <div className="text-red-400 text-sm">{String(localError || error)}</div>
-                )}
+                </div>
               </div>
+            )}
 
-              <div
-                className="sticky bottom-0 bg-street-800 border-t border-street-700 p-4 flex gap-3 flex-shrink-0"
-                style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setShowComposerModal(false)}
-                  className="flex-1 px-4 py-3 bg-street-700 text-white font-bold rounded-lg hover:bg-street-600 transition"
+            {/* Étape 2 — Légende */}
+            {composerStep === 'caption' && (
+              <form onSubmit={handleCreatePost} className="flex flex-col flex-1 min-h-0">
+                <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+                  {/* Vignette média */}
+                  {previewUrl && (
+                    <div className="flex items-center gap-3 bg-street-900 rounded-xl p-2">
+                      {newPostMedia?.type.startsWith('image/') && (
+                        <img src={previewUrl} alt="Preview" className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
+                      )}
+                      {newPostMedia?.type.startsWith('video/') && (
+                        <video src={previewUrl} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
+                      )}
+                      <span className="text-gray-400 text-sm truncate">{newPostMedia?.name}</span>
+                    </div>
+                  )}
+                  <textarea
+                    value={newPostCaption}
+                    onChange={(e) => setNewPostCaption(e.target.value)}
+                    placeholder="Ajouter une légende… (optionnel)"
+                    className="w-full p-3 bg-street-900 border border-street-700 text-white rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-street-accent placeholder-gray-500"
+                    rows={4}
+                    autoFocus
+                  />
+                  {(localError || error) && (
+                    <div className="text-red-400 text-sm">{String(localError || error)}</div>
+                  )}
+                </div>
+                <div
+                  className="sticky bottom-0 bg-street-800 border-t border-street-700 p-4 flex gap-3 flex-shrink-0"
+                  style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
                 >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={posting || (!newPostCaption.trim() && !newPostMedia)}
-                  className="flex-1 px-4 py-3 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover disabled:opacity-50 disabled:cursor-not-allowed transition"
-                >
-                  {posting ? 'Publication...' : 'Publier'}
-                </button>
-              </div>
-            </form>
+                  <button
+                    type="button"
+                    onClick={() => setComposerStep('media')}
+                    className="flex-1 px-4 py-3 bg-street-700 text-white font-bold rounded-lg hover:bg-street-600 transition"
+                  >
+                    Retour
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={posting}
+                    className="flex-1 px-4 py-3 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  >
+                    {posting ? 'Publication...' : 'Publier'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
