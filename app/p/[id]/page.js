@@ -39,6 +39,7 @@ export default function PostPage() {
   const [deletingByPost, setDeletingByPost] = useState({})
 
   const scrollRef = useRef(null)
+  const redirectingAfterDeleteRef = useRef(false)
 
   useEffect(() => {
     if (!postId) return
@@ -332,7 +333,14 @@ export default function PostPage() {
         alert('Impossible de supprimer le post')
         return
       }
-      setPosts((prev) => prev.filter((x) => x.id !== p.id))
+      setPosts((prev) => {
+        const next = prev.filter((x) => x.id !== p.id)
+        if (next.length === 0) {
+          redirectingAfterDeleteRef.current = true
+          router.push(`/?tab=profile&u=${encodeURIComponent(ownerId || p.user_id)}`)
+        }
+        return next
+      })
     } catch (e) {
       console.error('delete post error:', e)
       alert('Impossible de supprimer le post')
@@ -349,7 +357,7 @@ export default function PostPage() {
     )
   }
 
-  if (error || !posts.length) {
+  if ((error || !posts.length) && !redirectingAfterDeleteRef.current) {
     return (
       <div className="min-h-screen bg-black p-4">
         <div className="flex items-center gap-3 mb-4">
@@ -367,7 +375,7 @@ export default function PostPage() {
   const headerUser = posts[0]?.profiles?.username || 'StreetConnect'
 
   return (
-    <div className="min-h-screen bg-black flex flex-col">
+    <div className="h-screen bg-black flex flex-col">
       {/* TOP BAR */}
       <div className="sticky top-0 z-20 bg-black/80 backdrop-blur border-b border-street-800">
         <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
@@ -386,7 +394,7 @@ export default function PostPage() {
       {/* FEED SCROLL */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto overscroll-contain snap-y snap-mandatory"
+        className="flex-1 overflow-y-auto overscroll-contain"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <div className="max-w-md mx-auto px-4 py-4 space-y-8 pb-24">
@@ -395,7 +403,7 @@ export default function PostPage() {
             const author = p.profiles || {}
 
             return (
-              <div key={p.id} id={`post-${p.id}`} className="snap-start scroll-mt-16">
+              <div key={p.id} id={`post-${p.id}`} className="scroll-mt-16">
                 <div className={`bg-black border rounded-2xl overflow-hidden ${p.id === postId ? 'border-street-accent' : 'border-street-800'}`}>
                   <div className="px-4 py-3 flex items-center justify-between border-b border-street-800 bg-black/60">
                     <div className="text-white font-semibold text-sm">
