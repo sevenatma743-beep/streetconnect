@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { getSpots } from '../lib/supabase'
 
@@ -8,6 +8,17 @@ const MapContainer = dynamic(() => import('react-leaflet').then(m => m.MapContai
 const TileLayer = dynamic(() => import('react-leaflet').then(m => m.TileLayer), { ssr: false })
 const Marker = dynamic(() => import('react-leaflet').then(m => m.Marker), { ssr: false })
 const Popup = dynamic(() => import('react-leaflet').then(m => m.Popup), { ssr: false })
+const MapController = dynamic(
+  () => import('react-leaflet').then(({ useMap }) => {
+    function Controller({ onReady }) {
+      const map = useMap()
+      useEffect(() => { onReady(map) }, [map, onReady])
+      return null
+    }
+    return Controller
+  }),
+  { ssr: false }
+)
 
 let leafletIconFixed = false
 async function fixLeafletIconsOnce() {
@@ -74,9 +85,10 @@ export default function Spots() {
     window.open(url, '_blank')
   }
 
-  const focusSpot = async (spot) => {
+  const onMapReady = useCallback((map) => { mapRef.current = map }, [])
+
+  const focusSpot = (spot) => {
     setActiveId(spot.id)
-    await fixLeafletIconsOnce()
     const map = mapRef.current
     if (!map) return
     map.setView([spot.lat, spot.lng], 16, { animate: true })
@@ -98,82 +110,78 @@ export default function Spots() {
           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-street-800 border border-street-700 rounded-xl p-4 max-h-[500px] overflow-y-auto">
-            {loading ? (
-              <p className="text-gray-400 text-center">Chargement...</p>
-            ) : filtered.length === 0 ? (
-              <p className="text-gray-400 text-center">Aucun spot trouvé.</p>
-            ) : (
-              <ul className="space-y-3">
-                {filtered.map(s => (
-                  <li key={s.id} className={`p-3 rounded-xl transition ${activeId === s.id ? 'bg-street-900 border-street-accent' : 'bg-street-800'} border border-street-700`}>
-                    <p className="text-white font-bold">{s.name}</p>
-                    <p className="text-gray-400 text-sm">{s.city} — {s.address}</p>
-                    {s.tags && s.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {s.tags.map((tag, i) => (
-                          <span key={i} className="text-xs bg-street-700 text-gray-300 px-2 py-1 rounded">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div className="mt-2 flex gap-2">
-                      {/* Bouton Voir temporairement désactivé 
-                      <button 
-                        onClick={() => focusSpot(s)} 
-                        className="bg-street-700 text-white px-3 py-1 rounded hover:bg-street-600"
-                      >
-                        📍 Voir
-                      </button>
-                      */}
-                      <button 
-                        onClick={() => openItinerary(s)} 
-                        className="bg-street-accent text-street-900 px-3 py-1 rounded hover:bg-street-accentHover font-semibold"
+        <div className="bg-street-800 border border-street-700 rounded-xl overflow-hidden mb-4">
+          <div className="h-[50vh] w-full">
+            <MapContainer
+              center={center}
+              zoom={12}
+              scrollWheelZoom
+              className="h-full w-full"
+            >
+              <MapController onReady={onMapReady} />
+              <TileLayer
+                attribution='&copy; OpenStreetMap'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              {filtered.map((s) => (
+                <Marker key={s.id} position={[s.lat, s.lng]}>
+                  <Popup>
+                    <div>
+                      <strong>{s.name}</strong><br />
+                      {s.city}<br />
+                      {s.address}<br />
+                      <button
+                        onClick={() => openItinerary(s)}
+                        className="mt-2 text-sm bg-yellow-400 text-black font-bold px-3 py-1 rounded hover:bg-yellow-500"
                       >
                         🚶 Itinéraire
                       </button>
                     </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+                  </Popup>
+                </Marker>
+              ))}
+            </MapContainer>
           </div>
+        </div>
 
-          <div className="bg-street-800 border border-street-700 rounded-xl overflow-hidden">
-            <div className="h-[500px] w-full">
-              <MapContainer
-                center={center}
-                zoom={12}
-                scrollWheelZoom
-                className="h-full w-full"
-              >
-                <TileLayer
-                  attribution='&copy; OpenStreetMap'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-
-                {filtered.map((s) => (
-                  <Marker key={s.id} position={[s.lat, s.lng]}>
-                    <Popup>
-                      <div>
-                        <strong>{s.name}</strong><br />
-                        {s.city}<br />
-                        {s.address}<br />
-                        <button 
-                          onClick={() => openItinerary(s)} 
-                          className="mt-2 text-sm bg-yellow-400 text-black font-bold px-3 py-1 rounded hover:bg-yellow-500"
-                        >
-                          🚶 Itinéraire
-                        </button>
-                      </div>
-                    </Popup>
-                  </Marker>
-                ))}
-              </MapContainer>
-            </div>
-          </div>
+        <div className="bg-street-800 border border-street-700 rounded-xl p-4 max-h-[400px] overflow-y-auto">
+          {loading ? (
+            <p className="text-gray-400 text-center">Chargement...</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-gray-400 text-center">Aucun spot trouvé.</p>
+          ) : (
+            <ul className="space-y-3">
+              {filtered.map(s => (
+                <li key={s.id} className={`p-3 rounded-xl transition ${activeId === s.id ? 'bg-street-900 border-street-accent' : 'bg-street-800'} border border-street-700`}>
+                  <p className="text-white font-bold">{s.name}</p>
+                  <p className="text-gray-400 text-sm">{s.city} — {s.address}</p>
+                  {s.tags && s.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {s.tags.map((tag, i) => (
+                        <span key={i} className="text-xs bg-street-700 text-gray-300 px-2 py-1 rounded">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={() => focusSpot(s)}
+                      className="bg-street-700 text-white px-3 py-1 rounded hover:bg-street-600 text-sm"
+                    >
+                      📍 Voir sur la carte
+                    </button>
+                    <button
+                      onClick={() => openItinerary(s)}
+                      className="bg-street-accent text-street-900 px-3 py-1 rounded hover:bg-street-accentHover font-semibold text-sm"
+                    >
+                      🚶 Itinéraire
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
     </div>
