@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
-import { useAuth } from '../contexts/AuthContext'
-import { getSpots, createSpot } from '../lib/supabase'
+import { getSpots } from '../lib/supabase'
 
 const MapContainer = dynamic(() => import('react-leaflet').then(m => m.MapContainer), { ssr: false })
 const TileLayer = dynamic(() => import('react-leaflet').then(m => m.TileLayer), { ssr: false })
@@ -27,44 +26,13 @@ function isValidCoord(n) {
   return typeof n === 'number' && Number.isFinite(n)
 }
 
-// Fonction de géocodage via Nominatim (OpenStreetMap)
-async function geocodeAddress(address, city) {
-  try {
-    const query = `${address}, ${city}, France`
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`
-    
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'StreetConnect/1.0' // Nominatim requiert un User-Agent
-      }
-    })
-    
-    const data = await response.json()
-    
-    if (data && data.length > 0) {
-      return {
-        lat: parseFloat(data[0].lat),
-        lng: parseFloat(data[0].lon)
-      }
-    }
-    
-    return null
-  } catch (error) {
-    console.error('Erreur géocodage:', error)
-    return null
-  }
-}
-
 export default function Spots() {
   const mapRef = useRef(null)
-  const { user } = useAuth()
   const [query, setQuery] = useState('')
   const [activeId, setActiveId] = useState(null)
   const [spots, setSpots] = useState([])
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState('')
-  const [geocoding, setGeocoding] = useState(false)
-  const [newSpot, setNewSpot] = useState({ name: '', city: '', address: '', tags: '' })
 
   const center = useMemo(() => [43.6108, 3.8767], [])
 
@@ -114,92 +82,12 @@ export default function Spots() {
     map.setView([spot.lat, spot.lng], 16, { animate: true })
   }
 
-  async function handleCreateSpot(e) {
-    e.preventDefault()
-    if (!user) return alert('Non connecté')
-    
-    try {
-      setGeocoding(true)
-      setErrorMsg('')
-      
-      // Géocoder l'adresse automatiquement
-      const coords = await geocodeAddress(newSpot.address, newSpot.city)
-      
-      if (!coords) {
-        setErrorMsg('Impossible de trouver les coordonnées de cette adresse. Vérifie l\'adresse et la ville.')
-        setGeocoding(false)
-        return
-      }
-      
-      const spotData = {
-        name: newSpot.name,
-        city: newSpot.city,
-        address: newSpot.address,
-        lat: coords.lat,
-        lng: coords.lng,
-        tags: newSpot.tags.split(',').map(t => t.trim()).filter(t => t)
-      }
-      
-      await createSpot(spotData)
-      setNewSpot({ name: '', city: '', address: '', tags: '' })
-      await loadSpots()
-    } catch (e) {
-      console.error('Erreur ajout spot:', e)
-      setErrorMsg('Erreur lors de l\'ajout du spot')
-    } finally {
-      setGeocoding(false)
-    }
-  }
-
   return (
     <div className="pb-20 p-4">
       <div className="max-w-6xl mx-auto">
         <h2 className="font-display font-bold text-3xl text-white mb-1">SPOTS</h2>
-        <p className="text-gray-400 mb-4">Trouve ou ajoute un spot de street workout</p>
+        <p className="text-gray-400 mb-4">Découvre les spots de street workout</p>
         {errorMsg && <p className="text-sm text-red-500 mb-2">{errorMsg}</p>}
-
-        <form onSubmit={handleCreateSpot} className="bg-street-800 border border-street-700 rounded-xl p-4 mb-6">
-          <h3 className="text-white font-bold mb-2">Ajouter un Spot</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input 
-              className="bg-street-900 text-white p-2 rounded" 
-              placeholder="Nom du spot" 
-              value={newSpot.name} 
-              onChange={e => setNewSpot({ ...newSpot, name: e.target.value })} 
-              required 
-            />
-            <input 
-              className="bg-street-900 text-white p-2 rounded" 
-              placeholder="Ville" 
-              value={newSpot.city} 
-              onChange={e => setNewSpot({ ...newSpot, city: e.target.value })} 
-              required 
-            />
-            <input 
-              className="bg-street-900 text-white p-2 rounded md:col-span-2" 
-              placeholder="Adresse complète (ex: 208 Quai de Bercy)" 
-              value={newSpot.address} 
-              onChange={e => setNewSpot({ ...newSpot, address: e.target.value })} 
-              required 
-            />
-            <input 
-              className="bg-street-900 text-white p-2 rounded md:col-span-2" 
-              placeholder="Tags (séparés par virgule, ex: barres, anneaux, trx)" 
-              value={newSpot.tags} 
-              onChange={e => setNewSpot({ ...newSpot, tags: e.target.value })} 
-            />
-          </div>
-          <button 
-            type="submit" 
-            disabled={geocoding}
-            className="mt-4 w-full bg-street-accent text-street-900 font-bold py-2 rounded hover:bg-street-accentHover disabled:opacity-50"
-          >
-            {geocoding ? 'Recherche des coordonnées...' : 'Ajouter le spot'}
-          </button>
-          <p className="text-xs text-gray-500 mt-2">
-            💡 Les coordonnées GPS seront trouvées automatiquement
-          </p>
-        </form>
 
         <div className="mb-4">
           <input
@@ -222,7 +110,6 @@ export default function Spots() {
                   <li key={s.id} className={`p-3 rounded-xl transition ${activeId === s.id ? 'bg-street-900 border-street-accent' : 'bg-street-800'} border border-street-700`}>
                     <p className="text-white font-bold">{s.name}</p>
                     <p className="text-gray-400 text-sm">{s.city} — {s.address}</p>
-                    <p className="text-gray-500 text-xs">GPS: {s.lat.toFixed(4)}, {s.lng.toFixed(4)}</p>
                     {s.tags && s.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-2">
                         {s.tags.map((tag, i) => (
