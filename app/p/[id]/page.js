@@ -6,7 +6,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Heart, MessageCircle, Send, Trash2 } from 'lucide-react'
 
 import { useAuth } from '../../../contexts/AuthContext'
-import { supabase } from '../../../lib/supabase'
+import { supabase, deletePost } from '../../../lib/supabase'
 
 export default function PostPage() {
   const router = useRouter()
@@ -321,17 +321,17 @@ export default function PostPage() {
   async function handleDeletePost(p) {
     if (!user?.id || !p?.id) return
     if (user.id !== p.user_id) return
-
     if (deletingByPost[p.id]) return
-    const ok = confirm('Supprimer cette publication ?')
-    if (!ok) return
+    if (!confirm('Supprimer cette publication ?')) return
 
     setDeletingByPost((m) => ({ ...m, [p.id]: true }))
 
     try {
-      const { error } = await supabase.from('posts').delete().eq('id', p.id).eq('user_id', user.id)
-      if (error) throw error
-
+      const success = await deletePost(p.id, user.id)
+      if (!success) {
+        alert('Impossible de supprimer le post')
+        return
+      }
       setPosts((prev) => prev.filter((x) => x.id !== p.id))
     } catch (e) {
       console.error('delete post error:', e)
