@@ -311,25 +311,20 @@ export default function Profile({
 
   return (
     <div className="max-w-md mx-auto pb-24">
-      {/* TOP BAR */}
-      <div className="sticky top-0 z-30 bg-street-800/90 backdrop-blur border-b border-street-700">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {/* Flèche retour uniquement quand on visite quelqu’un */}
-            {!isMyProfile && (
-              <button
-                onClick={() => (onBack ? onBack() : router.push(`/?tab=${encodeURIComponent(returnTab || 'feed')}`))}
-                className="p-2 rounded-lg hover:bg-street-700 text-white"
-                aria-label="Retour"
-              >
-                <ArrowLeft size={20} />
-              </button>
-            )}
+      {/* HEADER PROFILE */}
+      <div className="px-4 pt-4">
+        {/* Actions row : retour (autre profil) | ⋮ (mon profil) */}
+        <div className="flex items-center justify-between mb-4">
+          {!isMyProfile ? (
+            <button
+              onClick={() => (onBack ? onBack() : router.push(`/?tab=${encodeURIComponent(returnTab || 'feed')}`))}
+              className="p-2 rounded-lg hover:bg-street-700 text-white"
+              aria-label="Retour"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          ) : <div />}
 
-            <div className="text-white font-bold">{profile.username || 'Profil'}</div>
-          </div>
-
-          {/* ⋮ menu (profil perso) */}
           {isMyProfile && (
             <div className="relative" ref={moreMenuRef}>
               <button
@@ -341,7 +336,7 @@ export default function Profile({
               </button>
 
               {showMoreMenu && (
-                <div className="absolute right-0 mt-2 w-56 bg-street-800 border border-street-700 rounded-xl overflow-hidden shadow-xl">
+                <div className="absolute right-0 mt-2 w-56 bg-street-800 border border-street-700 rounded-xl overflow-hidden shadow-xl z-40">
                   <button
                     onClick={handleLogout}
                     className="w-full flex items-center gap-2 px-4 py-3 text-white hover:bg-street-700"
@@ -360,10 +355,7 @@ export default function Profile({
             </div>
           )}
         </div>
-      </div>
 
-      {/* HEADER PROFILE */}
-      <div className="px-4 pt-5">
         <div className="flex items-center gap-4">
           <div className="relative">
             <img
