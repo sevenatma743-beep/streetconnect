@@ -101,15 +101,6 @@ export default function Spots() {
         <p className="text-gray-400 mb-4">Découvre les spots de street workout</p>
         {errorMsg && <p className="text-sm text-red-500 mb-2">{errorMsg}</p>}
 
-        <div className="mb-4">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Rechercher un spot..."
-            className="w-full bg-street-800 border border-street-700 text-white p-3 rounded-xl"
-          />
-        </div>
-
         <div className="bg-street-800 border border-street-700 rounded-xl overflow-hidden mb-4">
           <div className="h-[50vh] w-full">
             <MapContainer
@@ -142,6 +133,15 @@ export default function Spots() {
               ))}
             </MapContainer>
           </div>
+        </div>
+
+        <div className="mb-4">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Rechercher un spot..."
+            className="w-full bg-street-800 border border-street-700 text-white p-3 rounded-xl"
+          />
         </div>
 
         <div className="bg-street-800 border border-street-700 rounded-xl p-4 max-h-[400px] overflow-y-auto">

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import Image from 'next/image'
 import { useAuth } from '../contexts/AuthContext'
 import { X, Image as ImageIcon } from 'lucide-react'
 import {
@@ -384,10 +385,12 @@ export default function Feed({ onUserClick, feed }) {
       {/* Composer COMPACT mobile (cliquable) */}
       {user && (
         <div className="md:hidden bg-street-800 border border-street-700 rounded-xl shadow-lg p-3 flex items-center space-x-3">
-          <img
+          <Image
             src={user.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}
             alt="Avatar"
-            className="w-10 h-10 rounded-full border-2 border-street-accent"
+            width={40}
+            height={40}
+            className="w-10 h-10 rounded-full border-2 border-street-accent object-cover"
           />
           <div
             onClick={() => { setComposerStep('caption'); setShowComposerModal(true) }}
@@ -594,11 +597,13 @@ export default function Feed({ onUserClick, feed }) {
             {/* Header */}
             <div className="p-4 flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <img
+                <Image
                   src={post.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}
                   alt={post.username || 'Anonyme'}
+                  width={40}
+                  height={40}
                   onClick={() => onUserClick && onUserClick(post.user_id)}
-                  className="w-10 h-10 rounded-full border-2 border-street-accent cursor-pointer hover:opacity-80 transition"
+                  className="w-10 h-10 rounded-full border-2 border-street-accent object-cover cursor-pointer hover:opacity-80 transition"
                 />
                 <div>
                   <div
@@ -689,10 +694,12 @@ export default function Feed({ onUserClick, feed }) {
 
                     return (
                       <div key={comment.id} className="flex space-x-2 text-sm">
-                        <img
+                        <Image
                           src={comment.profiles?.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}
                           alt={comment.profiles?.username || 'Anonyme'}
-                          className="w-8 h-8 rounded-full border border-street-accent"
+                          width={32}
+                          height={32}
+                          className="w-8 h-8 rounded-full border border-street-accent object-cover"
                         />
                         <div className="flex-1 bg-street-900 border border-street-700 rounded-lg p-2">
                           <div className="flex items-center justify-between">

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { mutate as globalMutate } from 'swr'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../contexts/AuthContext'
 import {
@@ -216,6 +217,7 @@ export default function Profile({
         setProfile(updated)
         setIsEditing(false)
         setNewAvatar(null)
+        globalMutate(key => Array.isArray(key) && key[0] === 'feed')
       } else {
         setFormError('Erreur lors de la sauvegarde')
       }
@@ -314,7 +316,7 @@ export default function Profile({
       {/* HEADER PROFILE */}
       <div className="px-4 pt-4">
         {/* Actions row : retour (autre profil) | ⋮ (mon profil) */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-2">
           {!isMyProfile ? (
             <button
               onClick={() => (onBack ? onBack() : router.push(`/?tab=${encodeURIComponent(returnTab || 'feed')}`))}
