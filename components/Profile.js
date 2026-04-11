@@ -21,7 +21,9 @@ import {
   ChevronDown,
   UserPlus,
   UserCheck,
-  LogOut
+  LogOut,
+  Flag,
+  X
 } from 'lucide-react'
 
 export default function Profile({
@@ -67,6 +69,12 @@ export default function Profile({
   // menu "Suivi(e)" (profil autre)
   const [showFollowingMenu, setShowFollowingMenu] = useState(false)
   const followingMenuRef = useRef(null)
+
+  // signalement utilisateur
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [reportReason, setReportReason] = useState('Comportement inapproprié')
+  const [reportDetails, setReportDetails] = useState('')
+  const [reportStatus, setReportStatus] = useState(null) // null | 'success' | 'duplicate' | 'error'
 
   const isMyProfile = useMemo(() => user?.id && profile?.id && user.id === profile.id, [user, profile])
 
@@ -291,6 +299,31 @@ export default function Profile({
     router.push(`/messages/${conversationId}`)
   }
 
+  function closeReport() {
+    setShowReportModal(false)
+    setReportStatus(null)
+    setReportDetails('')
+    setReportReason('Comportement inapproprié')
+  }
+
+  async function handleSubmitReport() {
+    const { error } = await supabase.from('reports').insert({
+      reporter_id: user.id,
+      target_type: 'user',
+      target_id: profile.id,
+      reason: reportReason,
+      details: reportDetails || null
+    })
+
+    if (!error) {
+      setReportStatus('success')
+    } else if (error.code === '23505') {
+      setReportStatus('duplicate')
+    } else {
+      setReportStatus('error')
+    }
+  }
+
   // ✅ OUVRIR LE POST CLIQUÉ EN MODE FEED (Instagram) + garder l'ID du profil pour le retour
   function openPost(index) {
     const post = posts[index]
@@ -468,6 +501,7 @@ export default function Profile({
                 Modifier le profil
               </button>
             ) : (
+              <div className="space-y-3">
               <div className="flex gap-2">
                 {/* Bouton Suivre / Suivi(e) avec menu liste */}
                 <div className="relative flex-1" ref={followingMenuRef}>
@@ -520,10 +554,106 @@ export default function Profile({
                   <MessageCircle size={18} />
                 </button>
               </div>
+
+              {/* Lien de signalement — discret */}
+              <button
+                onClick={() => { setShowReportModal(true); setReportStatus(null) }}
+                className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-400 transition"
+              >
+                <Flag size={12} />
+                Signaler cet utilisateur
+              </button>
+              </div>
             )}
           </div>
         )}
       </div>
+
+      {/* Modal Signalement utilisateur */}
+      {showReportModal && (
+        <div className="fixed inset-0 bg-black/90 z-[300] flex items-end md:items-center md:justify-center">
+          <div
+            className="bg-street-800 rounded-t-2xl md:rounded-2xl w-full md:max-w-md flex flex-col overflow-hidden"
+            style={{ maxHeight: 'calc(100vh - 16px)' }}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-street-700 flex-shrink-0">
+              <h2 className="text-base font-black text-white">Signaler cet utilisateur</h2>
+              <button onClick={closeReport} className="text-gray-400 hover:text-white">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4 flex-1 overflow-y-auto">
+              {reportStatus === 'success' && (
+                <div className="text-center py-6 space-y-2">
+                  <p className="text-white font-bold">Signalement envoyé</p>
+                  <p className="text-sm text-gray-400">Merci. Nous examinerons ce profil.</p>
+                  <button onClick={closeReport} className="mt-4 text-sm text-street-accent hover:underline">Fermer</button>
+                </div>
+              )}
+
+              {reportStatus === 'duplicate' && (
+                <div className="text-center py-6 space-y-2">
+                  <p className="text-white font-bold">Déjà signalé</p>
+                  <p className="text-sm text-gray-400">Tu as déjà signalé cet utilisateur.</p>
+                  <button onClick={closeReport} className="mt-4 text-sm text-street-accent hover:underline">Fermer</button>
+                </div>
+              )}
+
+              {reportStatus === 'error' && (
+                <p className="text-red-400 text-sm text-center">Une erreur est survenue. Réessaie.</p>
+              )}
+
+              {!reportStatus && (
+                <>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-300 mb-2">Raison *</label>
+                    {['Comportement inapproprié', 'Harcèlement', 'Spam', 'Autre'].map(r => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setReportReason(r)}
+                        className={`w-full text-left px-4 py-2.5 mb-1.5 rounded-lg text-sm transition ${
+                          reportReason === r
+                            ? 'bg-red-500/20 border border-red-500/50 text-red-300 font-semibold'
+                            : 'bg-street-900 border border-street-700 text-gray-300 hover:border-street-600'
+                        }`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-300 mb-2">Détails (optionnel)</label>
+                    <textarea
+                      value={reportDetails}
+                      onChange={(e) => setReportDetails(e.target.value)}
+                      rows={3}
+                      placeholder="Décris le problème..."
+                      className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 resize-none text-sm placeholder-gray-600"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {!reportStatus && (
+              <div
+                className="p-4 border-t border-street-700 flex-shrink-0"
+                style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+              >
+                <button
+                  onClick={handleSubmitReport}
+                  className="w-full bg-red-500 text-white font-bold py-3 rounded-lg hover:bg-red-600 transition"
+                >
+                  Envoyer le signalement
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* POSTS GRID */}
       <div className="mt-6">

@@ -4,15 +4,17 @@ import { ShoppingCart, Heart, Trash2, ChevronLeft, ChevronRight, ChevronDown, X,
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 
-export default function Shop() {
+const CURATION_ENABLED = false
+
+export default function Shop({ onUserClick, onContactSeller }) {
   const { user } = useAuth()
-  
+
   // Tabs
-  const [activeTab, setActiveTab] = useState('curation') // 'curation' ou 'marketplace'
+  const [activeTab, setActiveTab] = useState('marketplace') // 'curation' ou 'marketplace'
   
   // Commun
   const [selectedCategory, setSelectedCategory] = useState('Tous')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
   
@@ -25,19 +27,29 @@ export default function Shop() {
   const [favorites, setFavorites] = useState([])
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [formError, setFormError] = useState('')
   const [newProduct, setNewProduct] = useState({
     name: '',
     description: '',
     price: '',
     category: 'Équipement',
-    affiliate_url: ''
+    affiliate_url: '',
+    listingType: 'vente'
   })
   const [selectedImages, setSelectedImages] = useState([])
   const [imagePreviews, setImagePreviews] = useState([])
   const [productImageIndexes, setProductImageIndexes] = useState({})
+  const [selectedMarketplaceProduct, setSelectedMarketplaceProduct] = useState(null)
+  const [modalImageIndex, setModalImageIndex] = useState(0)
+
+  // Signalement
+  const [reportTarget, setReportTarget] = useState(null) // { type: 'product'|'user', id: uuid }
+  const [reportReason, setReportReason] = useState('Arnaque')
+  const [reportDetails, setReportDetails] = useState('')
+  const [reportStatus, setReportStatus] = useState(null) // null | 'success' | 'duplicate' | 'error'
 
   useEffect(() => {
-    loadCuratedProducts()
+    if (CURATION_ENABLED) loadCuratedProducts()
     loadMarketplaceProducts()
     if (user) loadFavorites()
   }, [user])
@@ -68,16 +80,19 @@ export default function Shop() {
   
   async function loadMarketplaceProducts() {
     try {
+      setLoading(true)
       const { data, error } = await supabase
         .from('products')
-        .select('*')
+        .select('*, profiles:user_id(id, username, avatar_url)')
         .not('user_id', 'is', null) // Produits avec user_id = marketplace
         .order('created_at', { ascending: false })
-      
+
       if (error) throw error
       setMarketplaceProducts(data || [])
     } catch (e) {
       console.error('Erreur chargement marketplace:', e)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -121,12 +136,26 @@ export default function Shop() {
     }
   }
 
+  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+  const MAX_SIZE_MB = 5
+
   function handleImageSelect(e) {
     const files = Array.from(e.target.files).slice(0, 3)
+
+    for (const file of files) {
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        setFormError('Format non accepté. Utilise JPG, PNG ou WebP.')
+        return
+      }
+      if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+        setFormError(`Chaque image doit faire moins de ${MAX_SIZE_MB} Mo.`)
+        return
+      }
+    }
+
+    setFormError('')
     setSelectedImages(files)
-    
-    const previews = files.map(file => URL.createObjectURL(file))
-    setImagePreviews(previews)
+    setImagePreviews(files.map(file => URL.createObjectURL(file)))
   }
 
   function removeImage(index) {
@@ -159,37 +188,58 @@ export default function Shop() {
     return uploadedUrls
   }
 
+  function isValidContact(value) {
+    const v = (value || '').trim()
+    if (!v || v === '#') return false
+    if (v.includes('@')) return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
+    if (/^(\+33|0033|0)[67]/.test(v.replace(/[\s.-]/g, ''))) return true
+    if (v.startsWith('http://') || v.startsWith('https://')) return true
+    return false
+  }
+
   async function handleAddProduct(e) {
     e.preventDefault()
-    if (!user) return alert('Connecte-toi pour vendre !')
-    
+    setFormError('')
+
+    const isDon = newProduct.listingType === 'don'
+    const parsedPrice = isDon ? 0 : parseFloat(newProduct.price.replace(',', '.'))
+    if (!isDon && (isNaN(parsedPrice) || parsedPrice <= 0)) {
+      setFormError('Le prix doit être supérieur à 0 €.')
+      return
+    }
+
+    if (!isValidContact(newProduct.affiliate_url)) {
+      setFormError('Contact requis : email valide, numéro 06/07 ou lien https://...')
+      return
+    }
+
     try {
       setUploading(true)
-      
+
       const imageUrls = await uploadImages()
-      
+
       await supabase
         .from('products')
         .insert({
           name: newProduct.name,
           description: newProduct.description,
-          price: parseFloat(newProduct.price),
+          price: parsedPrice,
           category: newProduct.category,
           images: imageUrls.length > 0 ? imageUrls : ['https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=400&fit=crop'],
           image_url: imageUrls[0] || 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=400&fit=crop',
           affiliate_url: newProduct.affiliate_url || '#',
           user_id: user.id
         })
-      
-      alert('✅ Produit ajouté !')
+
       setShowAddProduct(false)
-      setNewProduct({ name: '', description: '', price: '', category: 'Équipement', affiliate_url: '' })
+      setFormError('')
+      setNewProduct({ name: '', description: '', price: '', category: 'Équipement', affiliate_url: '', listingType: 'vente' })
       setSelectedImages([])
       setImagePreviews([])
       await loadMarketplaceProducts()
     } catch (e) {
       console.error('Erreur ajout produit:', e)
-      alert('❌ Erreur')
+      setFormError('Une erreur est survenue. Réessaie.')
     } finally {
       setUploading(false)
     }
@@ -204,10 +254,42 @@ export default function Shop() {
         .delete()
         .eq('id', productId)
         .eq('user_id', user.id)
-      
+
       await loadMarketplaceProducts()
     } catch (e) {
       console.error('Erreur suppression:', e)
+    }
+  }
+
+  function openReport(type, id) {
+    setReportReason('Arnaque')
+    setReportDetails('')
+    setReportStatus(null)
+    setReportTarget({ type, id })
+  }
+
+  function closeReport() {
+    setReportTarget(null)
+    setReportStatus(null)
+    setReportDetails('')
+    setReportReason('Arnaque')
+  }
+
+  async function handleSubmitReport() {
+    const { error } = await supabase.from('reports').insert({
+      reporter_id: user.id,
+      target_type: reportTarget.type,
+      target_id: reportTarget.id,
+      reason: reportReason,
+      details: reportDetails || null
+    })
+
+    if (!error) {
+      setReportStatus('success')
+    } else if (error.code === '23505') {
+      setReportStatus('duplicate')
+    } else {
+      setReportStatus('error')
     }
   }
 
@@ -236,31 +318,58 @@ export default function Shop() {
     <>
       {/* Modal Ajout Produit (Marketplace) */}
       {showAddProduct && (
-        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
-          <div className="bg-street-800 rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-black text-white">Vendre un article</h2>
+        <div className="fixed inset-0 bg-black/90 z-[200] flex items-end md:items-center md:justify-center">
+          <div
+            className="bg-street-800 rounded-t-2xl md:rounded-2xl w-full md:max-w-lg flex flex-col overflow-hidden"
+            style={{ maxHeight: 'calc(100vh - 16px)' }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-street-700 flex-shrink-0">
+              <h2 className="text-xl font-black text-white">Déposer une annonce</h2>
               <button
-                onClick={() => setShowAddProduct(false)}
+                onClick={() => { setShowAddProduct(false); setFormError('') }}
                 className="text-gray-400 hover:text-white"
               >
                 <X size={24} />
               </button>
             </div>
 
-            <form onSubmit={handleAddProduct} className="space-y-4">
+            {/* Body scrollable */}
+            <form id="add-product-form" onSubmit={handleAddProduct} className="flex-1 overflow-y-auto p-4 space-y-4">
+
+              {/* Toggle Vente / Don */}
+              <div className="flex gap-2">
+                {['vente', 'don'].map(type => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setNewProduct({ ...newProduct, listingType: type, price: '' })}
+                    className={`flex-1 py-2 rounded-lg font-bold text-sm transition ${
+                      newProduct.listingType === type
+                        ? 'bg-street-accent text-street-900'
+                        : 'bg-street-900 border border-street-700 text-gray-400'
+                    }`}
+                  >
+                    {type === 'vente' ? '💰 Vente' : '🎁 Don'}
+                  </button>
+                ))}
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-gray-300 mb-2">
                   Photos (3 max)
                 </label>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp"
                   multiple
                   onChange={handleImageSelect}
                   className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-street-700 file:text-white hover:file:bg-street-600"
                 />
-                
+                <p className="text-xs text-gray-500 mt-1">
+                  JPG, PNG ou WebP · 5 Mo max · Sur mobile : maintiens appuyé pour sélectionner plusieurs photos
+                </p>
+
                 {imagePreviews.length > 0 && (
                   <div className="grid grid-cols-3 gap-2 mt-3">
                     {imagePreviews.map((preview, i) => (
@@ -305,19 +414,22 @@ export default function Shop() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">
-                  Prix (€) *
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={newProduct.price}
-                  onChange={(e) => setNewProduct({...newProduct, price: e.target.value})}
-                  className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
-                  required
-                />
-              </div>
+              {newProduct.listingType === 'vente' && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                    Prix (€) *
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="ex : 25 ou 9,99"
+                    value={newProduct.price}
+                    onChange={(e) => setNewProduct({...newProduct, price: e.target.value})}
+                    className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
+                    required
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-semibold text-gray-300 mb-2">
@@ -347,21 +459,34 @@ export default function Shop() {
                   className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
                 />
               </div>
+            </form>
 
+            {/* Footer sticky */}
+            <div
+              className="p-4 border-t border-street-700 flex-shrink-0 space-y-3"
+              style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+            >
+              <p className="text-xs text-gray-500 text-center">
+                StreetConnect met en relation vendeurs et acheteurs. La transaction se fait entre particuliers, hors de la plateforme.
+              </p>
+              {formError && (
+                <p className="text-red-400 text-sm text-center">{formError}</p>
+              )}
               <button
                 type="submit"
+                form="add-product-form"
                 disabled={uploading}
                 className="w-full bg-street-accent text-street-900 font-bold py-3 rounded-lg hover:bg-street-accentHover disabled:opacity-50 transition"
               >
-                {uploading ? 'Envoi...' : '✅ Publier'}
+                {uploading ? 'Envoi...' : 'Publier'}
               </button>
-            </form>
+            </div>
           </div>
         </div>
       )}
 
       {/* Modal Détail Produit Amazon */}
-      {selectedCuratedProduct && (
+      {CURATION_ENABLED && selectedCuratedProduct && (
         <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
           <div className="bg-street-800 rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
@@ -431,6 +556,206 @@ export default function Shop() {
         </div>
       )}
 
+      {/* Modal Détail Produit Marketplace */}
+      {selectedMarketplaceProduct && (
+        <div className="fixed inset-0 bg-black/90 z-[200] flex items-end md:items-center md:justify-center">
+          <div
+            className="bg-street-800 rounded-t-2xl md:rounded-2xl w-full md:max-w-lg flex flex-col overflow-hidden"
+            style={{ maxHeight: 'calc(100vh - 16px)' }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-street-700 flex-shrink-0">
+              <span className="text-xs font-bold text-street-accent uppercase tracking-wider">
+                {selectedMarketplaceProduct.category}
+              </span>
+              <button onClick={() => setSelectedMarketplaceProduct(null)} className="text-gray-400 hover:text-white">
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Body scrollable */}
+            <div className="flex-1 overflow-y-auto">
+              {/* Carousel grand format */}
+              <div className="relative aspect-square bg-street-900">
+                <img
+                  src={(selectedMarketplaceProduct.images || [selectedMarketplaceProduct.image_url])[modalImageIndex]}
+                  alt={selectedMarketplaceProduct.name}
+                  className="w-full h-full object-cover"
+                />
+                {(selectedMarketplaceProduct.images || [selectedMarketplaceProduct.image_url]).length > 1 && (
+                  <>
+                    <button
+                      onClick={() => setModalImageIndex(i => i === 0 ? (selectedMarketplaceProduct.images || [selectedMarketplaceProduct.image_url]).length - 1 : i - 1)}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/50 p-2 rounded-full hover:bg-black/70 transition"
+                    >
+                      <ChevronLeft size={20} className="text-white" />
+                    </button>
+                    <button
+                      onClick={() => setModalImageIndex(i => i === (selectedMarketplaceProduct.images || [selectedMarketplaceProduct.image_url]).length - 1 ? 0 : i + 1)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/50 p-2 rounded-full hover:bg-black/70 transition"
+                    >
+                      <ChevronRight size={20} className="text-white" />
+                    </button>
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                      {(selectedMarketplaceProduct.images || [selectedMarketplaceProduct.image_url]).map((_, i) => (
+                        <div key={i} className={`w-2 h-2 rounded-full ${i === modalImageIndex ? 'bg-white' : 'bg-white/40'}`} />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Détails */}
+              <div className="p-4 space-y-4">
+                <h2 className="text-xl font-black text-white">{selectedMarketplaceProduct.name}</h2>
+                <p className="text-sm text-gray-300 leading-relaxed">{selectedMarketplaceProduct.description}</p>
+                <div className="text-2xl font-black">
+                  {selectedMarketplaceProduct.price === 0
+                    ? <span className="text-street-accent">Don gratuit</span>
+                    : <span className="text-white">{selectedMarketplaceProduct.price.toFixed(2)}€</span>
+                  }
+                </div>
+
+                {/* Bloc vendeur */}
+                {user && selectedMarketplaceProduct.user_id !== user.id && selectedMarketplaceProduct.profiles && (
+                  <button
+                    onClick={() => { setSelectedMarketplaceProduct(null); onUserClick(selectedMarketplaceProduct.user_id) }}
+                    className="flex items-center gap-3 w-full py-3 px-4 bg-street-900 rounded-xl hover:bg-street-700 transition"
+                  >
+                    {selectedMarketplaceProduct.profiles.avatar_url ? (
+                      <img src={selectedMarketplaceProduct.profiles.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-street-600 flex items-center justify-center text-sm text-gray-300 font-bold flex-shrink-0">
+                        {selectedMarketplaceProduct.profiles.username?.[0]?.toUpperCase() || '?'}
+                      </div>
+                    )}
+                    <div className="text-left">
+                      <p className="text-xs text-gray-500">Vendu par</p>
+                      <p className="text-sm font-semibold text-white">@{selectedMarketplaceProduct.profiles.username || 'Vendeur'}</p>
+                    </div>
+                  </button>
+                )}
+
+                {/* Signaler */}
+                {user && selectedMarketplaceProduct.user_id !== user.id && (
+                  <button
+                    onClick={() => openReport('product', selectedMarketplaceProduct.id)}
+                    className="text-xs text-gray-600 hover:text-red-400 transition w-full text-center pt-2"
+                  >
+                    Signaler cette annonce
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Footer CTA */}
+            <div
+              className="p-4 border-t border-street-700 flex-shrink-0 space-y-3"
+              style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+            >
+              <p className="text-xs text-gray-500 text-center">
+                StreetConnect met en relation vendeurs et acheteurs. La transaction se fait entre particuliers, hors de la plateforme.
+              </p>
+              {user && selectedMarketplaceProduct.user_id !== user.id ? (
+                <button
+                  onClick={() => { setSelectedMarketplaceProduct(null); onContactSeller(selectedMarketplaceProduct.user_id) }}
+                  className="w-full flex items-center justify-center gap-2 bg-street-accent text-street-900 font-bold py-3 rounded-lg hover:bg-street-accentHover transition"
+                >
+                  <ShoppingCart size={20} strokeWidth={3} />
+                  Contacter le vendeur
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Signalement */}
+      {reportTarget && (
+        <div className="fixed inset-0 bg-black/90 z-[300] flex items-end md:items-center md:justify-center">
+          <div
+            className="bg-street-800 rounded-t-2xl md:rounded-2xl w-full md:max-w-md flex flex-col overflow-hidden"
+            style={{ maxHeight: 'calc(100vh - 16px)' }}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-street-700 flex-shrink-0">
+              <h2 className="text-base font-black text-white">Signaler une annonce</h2>
+              <button onClick={closeReport} className="text-gray-400 hover:text-white">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4 flex-1 overflow-y-auto">
+              {reportStatus === 'success' && (
+                <div className="text-center py-6 space-y-2">
+                  <p className="text-white font-bold">Signalement envoyé</p>
+                  <p className="text-sm text-gray-400">Merci. Nous examinerons cette annonce.</p>
+                  <button onClick={closeReport} className="mt-4 text-sm text-street-accent hover:underline">Fermer</button>
+                </div>
+              )}
+
+              {reportStatus === 'duplicate' && (
+                <div className="text-center py-6 space-y-2">
+                  <p className="text-white font-bold">Déjà signalé</p>
+                  <p className="text-sm text-gray-400">Tu as déjà signalé cette annonce.</p>
+                  <button onClick={closeReport} className="mt-4 text-sm text-street-accent hover:underline">Fermer</button>
+                </div>
+              )}
+
+              {reportStatus === 'error' && (
+                <p className="text-red-400 text-sm text-center">Une erreur est survenue. Réessaie.</p>
+              )}
+
+              {!reportStatus && (
+                <>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-300 mb-2">Raison *</label>
+                    {['Arnaque', 'Contenu inapproprié', 'Spam', 'Autre'].map(r => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setReportReason(r)}
+                        className={`w-full text-left px-4 py-2.5 mb-1.5 rounded-lg text-sm transition ${
+                          reportReason === r
+                            ? 'bg-red-500/20 border border-red-500/50 text-red-300 font-semibold'
+                            : 'bg-street-900 border border-street-700 text-gray-300 hover:border-street-600'
+                        }`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-300 mb-2">Détails (optionnel)</label>
+                    <textarea
+                      value={reportDetails}
+                      onChange={(e) => setReportDetails(e.target.value)}
+                      rows={3}
+                      placeholder="Décris le problème..."
+                      className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 resize-none text-sm placeholder-gray-600"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {!reportStatus && (
+              <div
+                className="p-4 border-t border-street-700 flex-shrink-0"
+                style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+              >
+                <button
+                  onClick={handleSubmitReport}
+                  className="w-full bg-red-500 text-white font-bold py-3 rounded-lg hover:bg-red-600 transition"
+                >
+                  Envoyer le signalement
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Contenu Principal */}
       <div className="max-w-7xl mx-auto p-4 pb-24 space-y-6">
         {/* Header - SHOP uniquement */}
@@ -494,7 +819,7 @@ export default function Shop() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6">
+        {CURATION_ENABLED && <div className="flex gap-2 mb-6">
           <button
             onClick={() => {
               setActiveTab('curation')
@@ -521,7 +846,7 @@ export default function Shop() {
           >
             🛒 Marketplace
           </button>
-        </div>
+        </div>}
 
         {/* Banner Vente (Marketplace uniquement) */}
         {activeTab === 'marketplace' && (
@@ -637,25 +962,26 @@ export default function Shop() {
                 const currentImageIndex = productImageIndexes[product.id] || 0
                 
                 return (
-                  <div 
-                    key={product.id} 
-                    className="bg-street-800 rounded-2xl p-4 border border-street-700 hover:border-street-accent transition-all group relative"
+                  <div
+                    key={product.id}
+                    onClick={() => { setSelectedMarketplaceProduct(product); setModalImageIndex(0) }}
+                    className="bg-street-800 rounded-2xl p-4 border border-street-700 hover:border-street-accent transition-all group relative cursor-pointer"
                   >
                     <div className="absolute top-2 right-2 z-10 flex gap-2">
                       {user && (
                         <button
-                          onClick={() => toggleFavorite(product.id)}
+                          onClick={(e) => { e.stopPropagation(); toggleFavorite(product.id) }}
                           className="bg-street-900/80 backdrop-blur-sm p-2 rounded-full hover:scale-110 transition-transform"
                         >
-                          <Heart 
-                            size={18} 
-                            className={isFavorite ? 'fill-red-500 text-red-500' : 'text-gray-400'} 
+                          <Heart
+                            size={18}
+                            className={isFavorite ? 'fill-red-500 text-red-500' : 'text-gray-400'}
                           />
                         </button>
                       )}
                       {isOwner && (
                         <button
-                          onClick={() => handleDeleteProduct(product.id)}
+                          onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product.id) }}
                           className="bg-red-500/80 backdrop-blur-sm p-2 rounded-full hover:scale-110 transition-transform"
                         >
                           <Trash2 size={18} className="text-white" />
@@ -722,30 +1048,36 @@ export default function Shop() {
                     </p>
 
                     <div className="mt-4 flex items-center justify-between">
-                      <span className="text-lg font-black text-white">
-                        {product.price.toFixed(2)}€
-                      </span>
-                      {product.affiliate_url && product.affiliate_url !== '#' ? (
-                        <a 
-                          href={
-                            product.affiliate_url.startsWith('http') 
-                              ? product.affiliate_url 
-                              : product.affiliate_url.includes('@')
-                              ? `mailto:${product.affiliate_url}`
-                              : `tel:${product.affiliate_url.replace(/\s/g, '')}`
-                          }
-                          target="_blank" 
-                          rel="noopener noreferrer"
+                      {product.price === 0 ? (
+                        <span className="text-sm font-black text-street-accent uppercase tracking-wide">Don gratuit</span>
+                      ) : (
+                        <span className="text-lg font-black text-white">{product.price.toFixed(2)}€</span>
+                      )}
+                      {!isOwner ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onContactSeller(product.user_id) }}
                           className="bg-street-accent text-street-900 w-9 h-9 rounded-lg flex items-center justify-center hover:scale-110 active:scale-90 transition-all shadow-lg"
                         >
                           <ShoppingCart size={20} strokeWidth={3} />
-                        </a>
-                      ) : (
-                        <div className="bg-gray-700 w-9 h-9 rounded-lg flex items-center justify-center cursor-not-allowed opacity-50">
-                          <ShoppingCart size={20} strokeWidth={3} className="text-gray-500" />
-                        </div>
-                      )}
+                        </button>
+                      ) : null}
                     </div>
+
+                    {!isOwner && product.profiles && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onUserClick(product.user_id) }}
+                        className="mt-3 pt-3 border-t border-street-700 flex items-center gap-2 w-full hover:opacity-70 transition"
+                      >
+                        {product.profiles.avatar_url ? (
+                          <img src={product.profiles.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-street-600 flex items-center justify-center text-[10px] text-gray-300 font-bold flex-shrink-0">
+                            {product.profiles.username?.[0]?.toUpperCase() || '?'}
+                          </div>
+                        )}
+                        <span className="text-xs text-gray-400 truncate">@{product.profiles.username || 'Vendeur'}</span>
+                      </button>
+                    )}
                   </div>
                 )
               }

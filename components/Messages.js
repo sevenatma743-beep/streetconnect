@@ -44,9 +44,13 @@ export default function Messages({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConversation])
 
+  // true si la conversation a été ouverte directement depuis un contexte externe (ex: Shop)
+  const directEntryRef = useRef(false)
+
   // ✅ Open convo instantly when Messages tab opens with initialConversationId
   useEffect(() => {
     if (user && initialConversationId) {
+      directEntryRef.current = true
       openConversation(initialConversationId)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -477,7 +481,12 @@ export default function Messages({
 
   function handleBack() {
     if (activeConversation) {
-      closeConversation()
+      if (directEntryRef.current) {
+        directEntryRef.current = false
+        if (typeof onExit === 'function') onExit()
+      } else {
+        closeConversation()
+      }
       return
     }
     if (typeof onExit === 'function') onExit()

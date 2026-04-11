@@ -203,6 +203,13 @@ export default function HomeClient() {
     setActiveTab('messages')
   }
 
+  async function handleContactSeller(userId) {
+    const { data, error } = await supabase.rpc('create_or_get_dm', { other_user_id: userId })
+    if (error || !data) return
+    const conversationId = typeof data === 'string' ? data : data?.conversation_id
+    if (conversationId) handleOpenConversation(conversationId, 'shop')
+  }
+
   function handleOpenMessages(fromTab = 'feed') {
     setMessagesReturnTab(fromTab)
     setMessagesInitialConversationId(null) // inbox
@@ -241,7 +248,7 @@ export default function HomeClient() {
       {activeTab === 'feed' && <Feed onUserClick={handleUserClick} feed={feed} />}
 
       {activeTab === 'spots' && <Spots />}
-      {activeTab === 'shop' && <Shop />}
+      {activeTab === 'shop' && <Shop onUserClick={handleUserClick} onContactSeller={handleContactSeller} />}
 
       {activeTab === 'search' && <SearchUsers onUserClick={handleUserClick} />}
 
