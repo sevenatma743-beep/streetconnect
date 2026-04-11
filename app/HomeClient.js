@@ -32,6 +32,9 @@ export default function HomeClient() {
   const [profileReturnTab, setProfileReturnTab] = useState('feed')
   const [profileReturnConversationId, setProfileReturnConversationId] = useState(null)
 
+  // Composer feed (signal externe pour le bouton + navbar)
+  const [openFeedComposer, setOpenFeedComposer] = useState(false)
+
   // Shop deep link
   const [shopInitialProductId, setShopInitialProductId] = useState(null)
 
@@ -233,6 +236,11 @@ export default function HomeClient() {
     setActiveTab('search')
   }
 
+  function handleCreatePost() {
+    setActiveTab('feed')
+    setOpenFeedComposer(true)
+  }
+
   // hide layout header + bottom nav ONLY when in a conversation
   const hideLayoutHeader = activeTab === 'messages' && messagesIsInConversation
   const hideBottomNav = activeTab === 'messages' && messagesIsInConversation
@@ -252,8 +260,16 @@ export default function HomeClient() {
       onOpenMessages={() => handleOpenMessages(activeTab)}
       onOpenNotifications={handleOpenNotifications}
       onOpenSearch={handleOpenSearch}
+      onCreatePost={handleCreatePost}
     >
-      {activeTab === 'feed' && <Feed onUserClick={handleUserClick} feed={feed} />}
+      {activeTab === 'feed' && (
+        <Feed
+          onUserClick={handleUserClick}
+          feed={feed}
+          externalOpenComposer={openFeedComposer}
+          onComposerOpened={() => setOpenFeedComposer(false)}
+        />
+      )}
 
       {activeTab === 'spots' && <Spots />}
       {activeTab === 'shop' && <Shop onUserClick={handleUserClick} onContactSeller={handleContactSeller} initialProductId={shopInitialProductId} onProductOpened={() => setShopInitialProductId(null)} />}

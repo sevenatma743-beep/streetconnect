@@ -18,7 +18,7 @@ import {
   unfollowUser
 } from '../lib/supabase'
 
-export default function Feed({ onUserClick, feed }) {
+export default function Feed({ onUserClick, feed, externalOpenComposer, onComposerOpened }) {
   const { user } = useAuth()
 
   const posts = feed?.posts || []
@@ -36,10 +36,16 @@ export default function Feed({ onUserClick, feed }) {
   const [showComposerModal, setShowComposerModal] = useState(false)
   const [composerStep, setComposerStep] = useState('media')
 
-  // Ref pour input file (barre compacte mobile)
-  const fileInputRef = useRef(null)
-  // Ref pour input file dans la modal (évite conflit de ref)
+  // Ref pour input file dans la modal
   const modalFileInputRef = useRef(null)
+
+  // Ouverture composer depuis signal externe (bouton + navbar)
+  useEffect(() => {
+    if (!externalOpenComposer) return
+    setComposerStep('media')
+    setShowComposerModal(true)
+    onComposerOpened?.()
+  }, [externalOpenComposer])
 
   function setMediaWithPreview(file) {
     setPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null })
@@ -53,7 +59,6 @@ export default function Feed({ onUserClick, feed }) {
     setNewPostCaption('')
     setShowComposerModal(false)
     setComposerStep('media')
-    if (fileInputRef.current) fileInputRef.current.value = ''
     if (modalFileInputRef.current) modalFileInputRef.current.value = ''
   }
 
@@ -65,6 +70,9 @@ export default function Feed({ onUserClick, feed }) {
 
   // Erreur locale (create post)
   const [localError, setLocalError] = useState(null)
+
+  // Erreurs inline par post (suppression post / commentaire)
+  const [postErrors, setPostErrors] = useState({})
 
   // Realtime likes
   useEffect(() => {
@@ -311,14 +319,14 @@ export default function Feed({ onUserClick, feed }) {
     try {
       const success = await deletePost(postId, user.id)
       if (!success) {
-        alert('Impossible de supprimer ce post')
+        setPostErrors(prev => ({ ...prev, [postId]: 'Impossible de supprimer ce post' }))
         safeRevalidate()
       } else {
         safeRevalidate()
       }
     } catch (err) {
       console.error('Erreur suppression post:', err)
-      alert('Erreur lors de la suppression')
+      setPostErrors(prev => ({ ...prev, [postId]: 'Erreur lors de la suppression' }))
       safeRevalidate()
     }
   }
@@ -329,7 +337,7 @@ export default function Feed({ onUserClick, feed }) {
     try {
       const success = await deleteComment(commentId, user.id, postOwnerId)
       if (!success) {
-        alert('Impossible de supprimer ce commentaire')
+        setPostErrors(prev => ({ ...prev, [postId]: 'Impossible de supprimer ce commentaire' }))
         return
       }
 
@@ -353,7 +361,7 @@ export default function Feed({ onUserClick, feed }) {
       safeRevalidate()
     } catch (err) {
       console.error('Erreur suppression commentaire:', err)
-      alert('Erreur lors de la suppression')
+      setPostErrors(prev => ({ ...prev, [postId]: 'Erreur lors de la suppression' }))
     }
   }
 
@@ -381,42 +389,7 @@ export default function Feed({ onUserClick, feed }) {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-6">
-      {/* Composer COMPACT mobile (cliquable) */}
-      {user && (
-        <div className="md:hidden bg-street-800 border border-street-700 rounded-xl shadow-lg p-3 flex items-center space-x-3">
-          <Image
-            src={user.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}
-            alt="Avatar"
-            width={40}
-            height={40}
-            className="w-10 h-10 rounded-full border-2 border-street-accent object-cover"
-          />
-          <div
-            onClick={() => { setComposerStep('caption'); setShowComposerModal(true) }}
-            className="flex-1 bg-street-900 border border-street-700 rounded-full px-4 py-2 text-gray-500 cursor-pointer hover:border-street-accent transition"
-          >
-            Quoi de neuf ?
-          </div>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="p-2 hover:bg-street-700 rounded-lg transition"
-          >
-            <ImageIcon size={24} className="text-gray-400" />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,video/*"
-            onChange={(e) => {
-              setComposerStep('media')
-              setMediaWithPreview(e.target.files?.[0] || null)
-              setShowComposerModal(true)
-            }}
-            className="hidden"
-          />
-        </div>
-      )}
+    <div className="max-w-2xl mx-auto px-0 space-y-1">
 
       {/* Composer COMPLET desktop */}
       {user && (
@@ -442,7 +415,7 @@ export default function Feed({ onUserClick, feed }) {
 
             <button
               type="submit"
-              disabled={posting || (!newPostCaption.trim() && !newPostMedia)}
+              disabled={posting || !newPostMedia}
               className="w-full sm:w-auto px-6 py-2 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
               {posting ? 'Publication...' : 'Publier'}
@@ -593,7 +566,7 @@ export default function Feed({ onUserClick, feed }) {
         </div>
       ) : (
         posts.map((post) => (
-          <div key={post.id} className="bg-street-800 border border-street-700 rounded-xl shadow-lg overflow-hidden">
+          <div key={post.id} className="bg-street-900 overflow-hidden">
             {/* Header */}
             <div className="p-4 flex items-center justify-between">
               <div className="flex items-center space-x-3">
@@ -657,17 +630,15 @@ export default function Feed({ onUserClick, feed }) {
               )}
             </div>
 
-            {/* Caption */}
-            {post.caption && (
-              <div className={!post.media_url ? 'bg-gradient-to-br from-street-700 to-street-900 min-h-[140px] flex items-center px-6 py-8' : 'px-4 pt-3 pb-1'}>
-                <p className={!post.media_url ? 'text-white text-lg font-semibold leading-relaxed' : 'text-sm text-gray-300'}>
-                  {post.caption}
-                </p>
+            {/* Caption texte-only — avant les actions */}
+            {post.caption && !post.media_url && (
+              <div className="bg-gradient-to-br from-street-700 to-street-900 min-h-[140px] flex items-center px-6 py-8">
+                <p className="text-white text-lg font-semibold leading-relaxed">{post.caption}</p>
               </div>
             )}
 
             {/* Actions */}
-            <div className="px-4 py-3 border-t border-street-700 flex items-center space-x-6">
+            <div className="px-4 py-3 flex items-center space-x-6">
               <button
                 onClick={() => handleLike(post.id, !!post.user_has_liked)}
                 className="flex items-center space-x-2 text-gray-400 hover:text-street-accent transition"
@@ -685,9 +656,20 @@ export default function Feed({ onUserClick, feed }) {
               </button>
             </div>
 
+            {/* Caption avec média — après les actions */}
+            {post.caption && post.media_url && (
+              <div className="px-4 pt-2 pb-3">
+                <p className="text-sm text-gray-300">{post.caption}</p>
+              </div>
+            )}
+
+            {postErrors[post.id] && (
+              <p className="px-4 pb-2 text-red-400 text-xs">{postErrors[post.id]}</p>
+            )}
+
             {/* Commentaires */}
             {expandedComments[post.id] && (
-              <div className="px-4 pb-4 border-t border-street-700 space-y-3">
+              <div className="px-4 pb-4 space-y-3">
                 <div className="space-y-2 mt-3 max-h-64 overflow-y-auto">
                   {(comments[post.id] || []).map(comment => {
                     const canDelete = user && (comment.user_id === user.id || post.user_id === user.id)

@@ -1,5 +1,5 @@
 'use client'
-import { Home, MapPin, ShoppingCart, User, MessageCircle, Bell, Search } from 'lucide-react'
+import { Home, MapPin, ShoppingCart, User, MessageCircle, Bell, Search, Plus } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
@@ -11,7 +11,8 @@ export default function Layout({
   hideHeader = false,
   hideBottomNav = false,
   unreadMessagesCount = 0,
-  unreadNotificationsCount = 0
+  unreadNotificationsCount = 0,
+  onCreatePost
 }) {
   const { user } = useAuth()
   const [profile, setProfile] = useState(null)
@@ -104,7 +105,8 @@ export default function Layout({
           className="fixed bottom-0 left-0 right-0 bg-street-800 border-t border-street-700 px-2 py-2 flex items-center justify-around z-50"
           style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
         >
-          {tabs.map((tab) => {
+          {/* Gauche : FEED + SPOTS */}
+          {tabs.slice(0, 2).map((tab) => {
             const Icon = tab.icon
             return (
               <button
@@ -115,11 +117,38 @@ export default function Layout({
                 }`}
               >
                 <Icon size={22} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
-                <span
-                  className={`text-[10px] font-bold mt-1 ${
-                    activeTab === tab.id ? 'text-street-accent' : 'text-gray-500'
-                  }`}
-                >
+                <span className={`text-[10px] font-bold mt-1 ${activeTab === tab.id ? 'text-street-accent' : 'text-gray-500'}`}>
+                  {tab.label}
+                </span>
+              </button>
+            )
+          })}
+
+          {/* Centre : bouton + flottant (mobile uniquement) */}
+          <div className="flex items-end justify-center md:hidden" style={{ marginTop: '-20px' }}>
+            <button
+              onClick={onCreatePost}
+              aria-label="Créer un post"
+              className="w-14 h-14 rounded-full bg-street-900 border-2 border-street-accent flex items-center justify-center transition-transform active:scale-95"
+              style={{ boxShadow: '0 0 14px rgba(255, 215, 0, 0.3)' }}
+            >
+              <Plus size={28} className="text-white" strokeWidth={2.5} />
+            </button>
+          </div>
+
+          {/* Droite : SHOP + PROFIL */}
+          {tabs.slice(2).map((tab) => {
+            const Icon = tab.icon
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex flex-col items-center justify-center py-2 px-3 rounded-xl transition-all ${
+                  activeTab === tab.id ? 'text-street-accent' : 'text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                <Icon size={22} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
+                <span className={`text-[10px] font-bold mt-1 ${activeTab === tab.id ? 'text-street-accent' : 'text-gray-500'}`}>
                   {tab.label}
                 </span>
               </button>

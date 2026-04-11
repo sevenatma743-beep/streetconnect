@@ -27,6 +27,7 @@ export default function Messages({
   const [searchResults, setSearchResults] = useState([])
   const [showSearch, setShowSearch] = useState(false)
   const [creatingConversation, setCreatingConversation] = useState(false)
+  const [convError, setConvError] = useState(null)
 
   const messagesEndRef = useRef(null)
   const channelRef = useRef(null)
@@ -173,7 +174,7 @@ export default function Messages({
       })
 
       // ✅ IMPORTANT: sort by last message timestamp (fallback to updatedAt)
-      const sortedInbox = (processedInbox || []).sort((a, b) => {
+      const sortedInbox = (processedInbox || []).filter(conv => conv.otherUser !== null).sort((a, b) => {
         const ta = new Date(a?.lastMessage?.created_at || a?.updatedAt || 0).getTime()
         const tb = new Date(b?.lastMessage?.created_at || b?.updatedAt || 0).getTime()
         return tb - ta
@@ -191,6 +192,7 @@ export default function Messages({
   async function openConversationWithUser(userId) {
     if (creatingConversation) return
     setCreatingConversation(true)
+    setConvError(null)
 
     try {
       const { data, error } = await supabase.rpc('create_or_get_dm', {
@@ -199,21 +201,21 @@ export default function Messages({
 
       if (error) {
         console.error('❌ RPC create_or_get_dm error:', error)
-        alert(`Erreur: ${error.message}`)
+        setConvError('Impossible d\'ouvrir la conversation.')
         return
       }
 
       const convoId = typeof data === 'string' ? data : data?.conversation_id
       if (!convoId) {
         console.error('❌ conversationId missing from response:', data)
-        alert('ID de conversation manquant')
+        setConvError('Impossible d\'ouvrir la conversation.')
         return
       }
 
       openConversation(convoId)
     } catch (err) {
       console.error('💥 Exception in openConversationWithUser:', err)
-      alert("Erreur lors de l'ouverture de la conversation")
+      setConvError('Impossible d\'ouvrir la conversation.')
     } finally {
       setCreatingConversation(false)
     }
@@ -506,12 +508,11 @@ export default function Messages({
   // RENDER: ACTIVE CONVERSATION VIEW
   // ============================================
   if (activeConversation) {
-    const displayName = activeConversation.otherUser?.username || 'Utilisateur'
+    const isDeletedAccount = !activeConversation.otherUser
+    const displayName = activeConversation.otherUser?.username || 'Compte supprimé'
     const displayAvatar =
       activeConversation.otherUser?.avatar_url ||
       'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'
-
-    const isInvalidConversation = activeConversation.memberCount === 1
 
     return (
       <div className="flex flex-col h-screen bg-street-900">
@@ -525,16 +526,16 @@ export default function Messages({
           <img
             src={displayAvatar}
             alt={displayName}
-            className="w-10 h-10 rounded-full border-2 border-street-accent cursor-pointer"
-            onClick={() => onUserClick?.(activeConversation.otherUser?.id, activeConversation.id)}
+            className={`w-10 h-10 rounded-full border-2 border-street-accent ${isDeletedAccount ? 'opacity-40' : 'cursor-pointer'}`}
+            onClick={isDeletedAccount ? undefined : () => onUserClick?.(activeConversation.otherUser?.id, activeConversation.id)}
           />
           <div className="flex-1">
             <p
-              className="font-bold text-white cursor-pointer"
-              onClick={() => onUserClick?.(activeConversation.otherUser?.id, activeConversation.id)}
+              className={`font-bold ${isDeletedAccount ? 'text-gray-400' : 'text-white cursor-pointer'}`}
+              onClick={isDeletedAccount ? undefined : () => onUserClick?.(activeConversation.otherUser?.id, activeConversation.id)}
             >{displayName}</p>
-            <p className="text-xs text-gray-400">
-              {isInvalidConversation ? '⚠️ Conversation invalide (1 membre)' : `@${displayName}`}
+            <p className="text-xs text-gray-500">
+              {isDeletedAccount ? 'Ce compte a été supprimé' : `@${displayName}`}
             </p>
           </div>
         </div>
@@ -640,6 +641,10 @@ export default function Messages({
         )}
       </div>
 
+      {convError && (
+        <p className="text-red-400 text-sm text-center mb-3">{convError}</p>
+      )}
+
       {loading ? (
         <div className="text-center text-gray-400 py-12">Chargement...</div>
       ) : inbox.length === 0 ? (
@@ -653,12 +658,11 @@ export default function Messages({
       ) : (
         <div className="space-y-3">
           {inbox.map(conv => {
-            const displayName = conv.otherUser?.username || 'Utilisateur inconnu'
+            const isDeletedAccount = !conv.otherUser
+            const displayName = conv.otherUser?.username || 'Compte supprimé'
             const displayAvatar =
               conv.otherUser?.avatar_url ||
               'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'
-
-            const isInvalidConversation = conv.memberCount === 1
 
             return (
               <div
@@ -670,15 +674,12 @@ export default function Messages({
                   <img
                     src={displayAvatar}
                     alt={displayName}
-                    className="w-12 h-12 rounded-full object-cover"
+                    className={`w-12 h-12 rounded-full object-cover ${isDeletedAccount ? 'opacity-40' : ''}`}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <p className={`font-bold ${conv.unread ? 'text-white' : 'text-gray-300'}`}>
+                      <p className={`font-bold ${isDeletedAccount ? 'text-gray-500' : conv.unread ? 'text-white' : 'text-gray-300'}`}>
                         {displayName}
-                        {isInvalidConversation && (
-                          <span className="ml-2 text-xs text-yellow-500">⚠️ 1 membre</span>
-                        )}
                       </p>
                       <span className="text-xs text-gray-500">
                         {conv.lastMessage
