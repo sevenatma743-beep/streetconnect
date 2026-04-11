@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase'
 
 const CURATION_ENABLED = false
 
-export default function Shop({ onUserClick, onContactSeller }) {
+export default function Shop({ onUserClick, onContactSeller, initialProductId, onProductOpened }) {
   const { user } = useAuth()
 
   // Tabs
@@ -33,7 +33,7 @@ export default function Shop({ onUserClick, onContactSeller }) {
     description: '',
     price: '',
     category: 'Équipement',
-    affiliate_url: '',
+    city: '',
     listingType: 'vente'
   })
   const [selectedImages, setSelectedImages] = useState([])
@@ -53,6 +53,23 @@ export default function Shop({ onUserClick, onContactSeller }) {
     loadMarketplaceProducts()
     if (user) loadFavorites()
   }, [user])
+
+  useEffect(() => {
+    if (!initialProductId) return
+    async function openProductById() {
+      const { data } = await supabase
+        .from('products')
+        .select('*, profiles:user_id(id, username, avatar_url)')
+        .eq('id', initialProductId)
+        .single()
+      if (data) {
+        setSelectedMarketplaceProduct(data)
+        setModalImageIndex(0)
+      }
+      if (onProductOpened) onProductOpened()
+    }
+    openProductById()
+  }, [initialProductId])
 
   // ===== CURATION (Amazon) =====
   
@@ -188,14 +205,6 @@ export default function Shop({ onUserClick, onContactSeller }) {
     return uploadedUrls
   }
 
-  function isValidContact(value) {
-    const v = (value || '').trim()
-    if (!v || v === '#') return false
-    if (v.includes('@')) return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
-    if (/^(\+33|0033|0)[67]/.test(v.replace(/[\s.-]/g, ''))) return true
-    if (v.startsWith('http://') || v.startsWith('https://')) return true
-    return false
-  }
 
   async function handleAddProduct(e) {
     e.preventDefault()
@@ -205,11 +214,6 @@ export default function Shop({ onUserClick, onContactSeller }) {
     const parsedPrice = isDon ? 0 : parseFloat(newProduct.price.replace(',', '.'))
     if (!isDon && (isNaN(parsedPrice) || parsedPrice <= 0)) {
       setFormError('Le prix doit être supérieur à 0 €.')
-      return
-    }
-
-    if (!isValidContact(newProduct.affiliate_url)) {
-      setFormError('Contact requis : email valide, numéro 06/07 ou lien https://...')
       return
     }
 
@@ -227,13 +231,13 @@ export default function Shop({ onUserClick, onContactSeller }) {
           category: newProduct.category,
           images: imageUrls.length > 0 ? imageUrls : ['https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=400&fit=crop'],
           image_url: imageUrls[0] || 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=400&fit=crop',
-          affiliate_url: newProduct.affiliate_url || '#',
+          city: newProduct.city || null,
           user_id: user.id
         })
 
       setShowAddProduct(false)
       setFormError('')
-      setNewProduct({ name: '', description: '', price: '', category: 'Équipement', affiliate_url: '', listingType: 'vente' })
+      setNewProduct({ name: '', description: '', price: '', category: 'Équipement', city: '', listingType: 'vente' })
       setSelectedImages([])
       setImagePreviews([])
       await loadMarketplaceProducts()
@@ -449,16 +453,18 @@ export default function Shop({ onUserClick, onContactSeller }) {
 
               <div>
                 <label className="block text-sm font-semibold text-gray-300 mb-2">
-                  Contact (email, tél, ou lien)
+                  Ville *
                 </label>
                 <input
                   type="text"
-                  value={newProduct.affiliate_url}
-                  onChange={(e) => setNewProduct({...newProduct, affiliate_url: e.target.value})}
-                  placeholder="contact@email.com ou 06..."
+                  value={newProduct.city}
+                  onChange={(e) => setNewProduct({...newProduct, city: e.target.value})}
+                  placeholder="ex : Paris, Lyon..."
                   className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
+                  required
                 />
               </div>
+
             </form>
 
             {/* Footer sticky */}
@@ -609,11 +615,16 @@ export default function Shop({ onUserClick, onContactSeller }) {
               <div className="p-4 space-y-4">
                 <h2 className="text-xl font-black text-white">{selectedMarketplaceProduct.name}</h2>
                 <p className="text-sm text-gray-300 leading-relaxed">{selectedMarketplaceProduct.description}</p>
-                <div className="text-2xl font-black">
-                  {selectedMarketplaceProduct.price === 0
-                    ? <span className="text-street-accent">Don gratuit</span>
-                    : <span className="text-white">{selectedMarketplaceProduct.price.toFixed(2)}€</span>
-                  }
+                <div className="flex items-center justify-between">
+                  <div className="text-2xl font-black">
+                    {selectedMarketplaceProduct.price === 0
+                      ? <span className="text-street-accent">Don gratuit</span>
+                      : <span className="text-white">{selectedMarketplaceProduct.price.toFixed(2)}€</span>
+                    }
+                  </div>
+                  {selectedMarketplaceProduct.city && (
+                    <span className="text-sm text-gray-400">📍 {selectedMarketplaceProduct.city}</span>
+                  )}
                 </div>
 
                 {/* Bloc vendeur */}
@@ -1048,12 +1059,17 @@ export default function Shop({ onUserClick, onContactSeller }) {
                     </p>
 
                     <div className="mt-4 flex items-center justify-between">
-                      {product.price === 0 ? (
-                        <span className="text-sm font-black text-street-accent uppercase tracking-wide">Don gratuit</span>
-                      ) : (
-                        <span className="text-lg font-black text-white">{product.price.toFixed(2)}€</span>
-                      )}
-                      {!isOwner ? (
+                      <div>
+                        {product.price === 0 ? (
+                          <span className="text-sm font-black text-street-accent uppercase tracking-wide">Don gratuit</span>
+                        ) : (
+                          <span className="text-lg font-black text-white">{product.price.toFixed(2)}€</span>
+                        )}
+                        {product.city && (
+                          <p className="text-xs text-gray-500 mt-0.5">📍 {product.city}</p>
+                        )}
+                      </div>
+                      {user && !isOwner ? (
                         <button
                           onClick={(e) => { e.stopPropagation(); onContactSeller(product.user_id) }}
                           className="bg-street-accent text-street-900 w-9 h-9 rounded-lg flex items-center justify-center hover:scale-110 active:scale-90 transition-all shadow-lg"

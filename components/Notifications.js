@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
-export default function Notifications({ onUserClick }) {
+export default function Notifications({ onUserClick, onOpenProduct }) {
   const router = useRouter()
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
@@ -56,7 +56,7 @@ export default function Notifications({ onUserClick }) {
     setLoading(true)
     const { data, error } = await supabase
       .from('notifications')
-      .select('id, type, actor_id, post_id, created_at, is_read')
+      .select('id, type, actor_id, post_id, product_id, created_at, is_read')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(30)
@@ -97,6 +97,8 @@ export default function Notifications({ onUserClick }) {
   function handleCardClick(notif) {
     if ((notif.type === 'like' || notif.type === 'comment') && notif.post_id) {
       router.push(`/p/${notif.post_id}?from=notifications`)
+    } else if (notif.type === 'favorite' && notif.product_id && onOpenProduct) {
+      onOpenProduct(notif.product_id)
     } else if (notif.actor_id && notif.actor) {
       onUserClick(notif.actor_id)
     }
@@ -163,7 +165,8 @@ export default function Notifications({ onUserClick }) {
                     {' '}{notif.type === 'like' && 'a aimé ta publication'}
                     {notif.type === 'comment' && 'a commenté ta publication'}
                     {notif.type === 'follow' && 'a commencé à te suivre'}
-                    {!['like','comment','follow'].includes(notif.type) && 'a interagi avec toi'}
+                    {notif.type === 'favorite' && 'a mis ton annonce en favori'}
+                    {!['like','comment','follow','favorite'].includes(notif.type) && 'a interagi avec toi'}
                   </p>
                   <p className="text-gray-500 text-xs mt-0.5">{timeAgo(notif.created_at)}</p>
                 </div>

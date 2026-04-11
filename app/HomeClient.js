@@ -32,6 +32,9 @@ export default function HomeClient() {
   const [profileReturnTab, setProfileReturnTab] = useState('feed')
   const [profileReturnConversationId, setProfileReturnConversationId] = useState(null)
 
+  // Shop deep link
+  const [shopInitialProductId, setShopInitialProductId] = useState(null)
+
   // Messages state-based
   const [messagesInitialConversationId, setMessagesInitialConversationId] = useState(null)
   const [messagesReturnTab, setMessagesReturnTab] = useState('feed')
@@ -216,6 +219,11 @@ export default function HomeClient() {
     setActiveTab('messages')
   }
 
+  function handleOpenProduct(productId) {
+    setShopInitialProductId(productId)
+    setActiveTab('shop')
+  }
+
   function handleOpenNotifications() {
     setUnreadNotificationsCount(0)
     setActiveTab('notifications')
@@ -248,11 +256,11 @@ export default function HomeClient() {
       {activeTab === 'feed' && <Feed onUserClick={handleUserClick} feed={feed} />}
 
       {activeTab === 'spots' && <Spots />}
-      {activeTab === 'shop' && <Shop onUserClick={handleUserClick} onContactSeller={handleContactSeller} />}
+      {activeTab === 'shop' && <Shop onUserClick={handleUserClick} onContactSeller={handleContactSeller} initialProductId={shopInitialProductId} onProductOpened={() => setShopInitialProductId(null)} />}
 
       {activeTab === 'search' && <SearchUsers onUserClick={handleUserClick} />}
 
-      {activeTab === 'notifications' && <Notifications onUserClick={handleUserClick} />}
+      {activeTab === 'notifications' && <Notifications onUserClick={handleUserClick} onOpenProduct={handleOpenProduct} />}
 
       {activeTab === 'messages' && (
         <Messages
