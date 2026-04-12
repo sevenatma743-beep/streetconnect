@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { ShoppingCart, Heart, Trash2, ChevronLeft, ChevronRight, ChevronDown, X, ExternalLink, Filter } from 'lucide-react'
+import { ShoppingCart, Heart, ChevronLeft, ChevronRight, ChevronDown, X, ExternalLink, Filter } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 
@@ -34,8 +34,11 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
     price: '',
     category: 'Équipement',
     city: '',
+    brand: '',
     listingType: 'vente'
   })
+  const [openMenuId, setOpenMenuId] = useState(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null)
   const [selectedImages, setSelectedImages] = useState([])
   const [imagePreviews, setImagePreviews] = useState([])
   const [productImageIndexes, setProductImageIndexes] = useState({})
@@ -47,6 +50,8 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
   const [reportReason, setReportReason] = useState('Arnaque')
   const [reportDetails, setReportDetails] = useState('')
   const [reportStatus, setReportStatus] = useState(null) // null | 'success' | 'duplicate' | 'error'
+  const [favErrors, setFavErrors] = useState({})
+  const [marketplaceLoadError, setMarketplaceLoadError] = useState(false)
 
   useEffect(() => {
     if (CURATION_ENABLED) loadCuratedProducts()
@@ -96,6 +101,7 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
   // ===== MARKETPLACE (P2P) =====
   
   async function loadMarketplaceProducts() {
+    setMarketplaceLoadError(false)
     try {
       setLoading(true)
       const { data, error } = await supabase
@@ -108,6 +114,7 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
       setMarketplaceProducts(data || [])
     } catch (e) {
       console.error('Erreur chargement marketplace:', e)
+      setMarketplaceLoadError(true)
     } finally {
       setLoading(false)
     }
@@ -128,28 +135,30 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
   }
 
   async function toggleFavorite(productId) {
-    if (!user) return alert('Connecte-toi pour ajouter des favoris !')
-    
+    if (!user) return
+
+    setFavErrors(prev => ({ ...prev, [productId]: null }))
     try {
       const isFavorite = favorites.includes(productId)
-      
+
       if (isFavorite) {
         await supabase
           .from('favorites')
           .delete()
           .eq('user_id', user.id)
           .eq('product_id', productId)
-        
+
         setFavorites(favorites.filter(id => id !== productId))
       } else {
         await supabase
           .from('favorites')
           .insert({ user_id: user.id, product_id: productId })
-        
+
         setFavorites([...favorites, productId])
       }
     } catch (e) {
       console.error('Erreur toggle favori:', e)
+      setFavErrors(prev => ({ ...prev, [productId]: 'Impossible de modifier les favoris' }))
     }
   }
 
@@ -210,6 +219,15 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
     e.preventDefault()
     setFormError('')
 
+    if (selectedImages.length === 0) {
+      setFormError('Au moins une photo est obligatoire.')
+      return
+    }
+    if (!newProduct.city.trim()) {
+      setFormError('La ville est obligatoire.')
+      return
+    }
+
     const isDon = newProduct.listingType === 'don'
     const parsedPrice = isDon ? 0 : parseFloat(newProduct.price.replace(',', '.'))
     if (!isDon && (isNaN(parsedPrice) || parsedPrice <= 0)) {
@@ -229,15 +247,16 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
           description: newProduct.description,
           price: parsedPrice,
           category: newProduct.category,
-          images: imageUrls.length > 0 ? imageUrls : ['https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=400&fit=crop'],
-          image_url: imageUrls[0] || 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=400&fit=crop',
-          city: newProduct.city || null,
+          images: imageUrls,
+          image_url: imageUrls[0],
+          city: newProduct.city,
+          brand: newProduct.brand || null,
           user_id: user.id
         })
 
       setShowAddProduct(false)
       setFormError('')
-      setNewProduct({ name: '', description: '', price: '', category: 'Équipement', city: '', listingType: 'vente' })
+      setNewProduct({ name: '', description: '', price: '', category: 'Équipement', city: '', brand: '', listingType: 'vente' })
       setSelectedImages([])
       setImagePreviews([])
       await loadMarketplaceProducts()
@@ -250,8 +269,8 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
   }
 
   async function handleDeleteProduct(productId) {
-    if (!confirm('Supprimer ce produit ?')) return
-    
+    setDeleteConfirmId(null)
+    setFavErrors(prev => ({ ...prev, [productId]: null }))
     try {
       await supabase
         .from('products')
@@ -262,6 +281,7 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
       await loadMarketplaceProducts()
     } catch (e) {
       console.error('Erreur suppression:', e)
+      setFavErrors(prev => ({ ...prev, [productId]: 'Impossible de supprimer l\'annonce' }))
     }
   }
 
@@ -303,10 +323,8 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  // Catégories dynamiques selon l'onglet actif
   const products = activeTab === 'curation' ? curatedProducts : marketplaceProducts
-  const allCategories = [...new Set(products.map(p => p.category))].sort()
-  const categories = ['Tous', ...allCategories]
+  const categories = ['Tous', 'Équipement', 'Vêtements', 'Accessoires', 'Nutrition']
 
   // Filtrage
   const filteredProducts = products.filter(product => {
@@ -415,6 +433,19 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
                   className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent resize-none"
                   rows={3}
                   required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  Marque
+                </label>
+                <input
+                  type="text"
+                  value={newProduct.brand}
+                  onChange={(e) => setNewProduct({...newProduct, brand: e.target.value})}
+                  placeholder="ex : Nike, Decathlon..."
+                  className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
                 />
               </div>
 
@@ -613,7 +644,12 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
 
               {/* Détails */}
               <div className="p-4 space-y-4">
-                <h2 className="text-xl font-black text-white">{selectedMarketplaceProduct.name}</h2>
+                <div>
+                  <h2 className="text-xl font-black text-white">{selectedMarketplaceProduct.name}</h2>
+                  {selectedMarketplaceProduct.brand && (
+                    <p className="text-xs text-gray-500 font-medium mt-1">{selectedMarketplaceProduct.brand}</p>
+                  )}
+                </div>
                 <p className="text-sm text-gray-300 leading-relaxed">{selectedMarketplaceProduct.description}</p>
                 <div className="flex items-center justify-between">
                   <div className="text-2xl font-black">
@@ -882,6 +918,16 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
         {/* Grille Produits */}
         {loading ? (
           <div className="text-center text-gray-400 py-12">Chargement...</div>
+        ) : marketplaceLoadError ? (
+          <div className="text-center py-12">
+            <p className="text-gray-500 mb-2">Impossible de charger les annonces</p>
+            <button
+              onClick={loadMarketplaceProducts}
+              className="text-street-accent hover:underline text-sm"
+            >
+              Réessayer
+            </button>
+          </div>
         ) : filteredProducts.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-500 mb-2">Aucun produit trouvé</p>
@@ -975,9 +1021,32 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
                 return (
                   <div
                     key={product.id}
-                    onClick={() => { setSelectedMarketplaceProduct(product); setModalImageIndex(0) }}
+                    onClick={() => { setSelectedMarketplaceProduct(product); setModalImageIndex(0); setOpenMenuId(null) }}
                     className="bg-street-800 rounded-2xl p-4 border border-street-700 hover:border-street-accent transition-all group relative cursor-pointer"
                   >
+                    {deleteConfirmId === product.id && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute inset-0 bg-street-900/95 rounded-2xl flex flex-col items-center justify-center gap-3 z-30"
+                      >
+                        <p className="text-sm text-white font-semibold text-center px-4">Supprimer cette annonce ?</p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(null) }}
+                            className="px-4 py-2 rounded-lg bg-street-700 text-white text-sm font-semibold hover:bg-street-600 transition"
+                          >
+                            Annuler
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product.id) }}
+                            className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition"
+                          >
+                            Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="absolute top-2 right-2 z-10 flex gap-2">
                       {user && (
                         <button
@@ -991,12 +1060,24 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
                         </button>
                       )}
                       {isOwner && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product.id) }}
-                          className="bg-red-500/80 backdrop-blur-sm p-2 rounded-full hover:scale-110 transition-transform"
-                        >
-                          <Trash2 size={18} className="text-white" />
-                        </button>
+                        <div className="relative">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === product.id ? null : product.id) }}
+                            className="bg-street-900/80 backdrop-blur-sm px-2.5 py-1.5 rounded-full hover:scale-110 transition-transform text-white text-base font-bold leading-none"
+                          >
+                            ···
+                          </button>
+                          {openMenuId === product.id && (
+                            <div className="absolute right-0 top-9 bg-street-800 border border-street-700 rounded-xl shadow-xl z-20 w-36 overflow-hidden">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); setDeleteConfirmId(product.id) }}
+                                className="w-full text-left px-4 py-3 text-red-400 text-sm font-semibold hover:bg-street-700 transition"
+                              >
+                                Supprimer
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
 
@@ -1046,9 +1127,14 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
                       )}
                     </div>
 
-                    <span className="text-[10px] font-bold text-street-accent uppercase tracking-wider">
-                      {product.category}
-                    </span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-street-accent uppercase tracking-wider">
+                        {product.category}
+                      </span>
+                      {product.brand && (
+                        <span className="text-[10px] text-gray-500 font-medium">{product.brand}</span>
+                      )}
+                    </div>
 
                     <h3 className="font-bold text-sm text-white mt-1 line-clamp-2 min-h-[2.5rem]">
                       {product.name}
@@ -1078,6 +1164,10 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
                         </button>
                       ) : null}
                     </div>
+
+                    {favErrors[product.id] && (
+                      <p className="text-red-400 text-xs mt-2">{favErrors[product.id]}</p>
+                    )}
 
                     {!isOwner && product.profiles && (
                       <button
