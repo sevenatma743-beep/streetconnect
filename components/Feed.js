@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import Image from 'next/image'
 import { useAuth } from '../contexts/AuthContext'
-import { X, Image as ImageIcon } from 'lucide-react'
+import { X, Image as ImageIcon, Heart, MessageCircle, Send } from 'lucide-react'
 import {
   supabase,
   createPost,
@@ -91,6 +91,9 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
 
   // Menu ... ouvert (postId | null)
   const [openPostMenu, setOpenPostMenu] = useState(null)
+
+  // Confirmation suppression inline (postId | null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
   // Realtime likes
   useEffect(() => {
@@ -327,7 +330,6 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
 
   async function handleDeletePost(postId) {
     if (!user) return
-    if (!confirm('Supprimer ce post ?')) return
 
     // optimistic remove
     if (mutate) {
@@ -627,23 +629,42 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
                 {/* Menu propriétaire */}
                 {user && post.user_id === user.id && (
                   <div className="relative">
-                    <button
-                      onClick={() => setOpenPostMenu(openPostMenu === post.id ? null : post.id)}
-                      className="text-gray-400 hover:text-white transition px-2 py-1 text-xl leading-none"
-                    >
-                      ···
-                    </button>
-                    {openPostMenu === post.id && (
+                    {confirmDeleteId === post.id ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="text-xs text-gray-400 hover:text-white px-2 py-1 transition"
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          onClick={() => { setConfirmDeleteId(null); handleDeletePost(post.id) }}
+                          className="text-xs text-red-400 hover:text-red-300 font-semibold px-2 py-1 transition"
+                        >
+                          Confirmer
+                        </button>
+                      </div>
+                    ) : (
                       <>
-                        <div className="fixed inset-0 z-10" onClick={() => setOpenPostMenu(null)} />
-                        <div className="absolute right-0 top-full mt-1 bg-street-800 border border-street-700 rounded-lg shadow-lg z-20 min-w-[130px]">
-                          <button
-                            onClick={() => { setOpenPostMenu(null); handleDeletePost(post.id) }}
-                            className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-street-700 rounded-lg transition"
-                          >
-                            Supprimer
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => setOpenPostMenu(openPostMenu === post.id ? null : post.id)}
+                          className="text-gray-400 hover:text-white transition px-2 py-1 text-xl leading-none"
+                        >
+                          ···
+                        </button>
+                        {openPostMenu === post.id && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setOpenPostMenu(null)} />
+                            <div className="absolute right-0 top-full mt-1 bg-street-800 border border-street-700 rounded-lg shadow-lg z-20 min-w-[130px]">
+                              <button
+                                onClick={() => { setOpenPostMenu(null); setConfirmDeleteId(post.id) }}
+                                className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-street-700 rounded-lg transition"
+                              >
+                                Supprimer
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </>
                     )}
                   </div>
@@ -688,9 +709,9 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
             <div className="px-4 py-3 flex items-center space-x-6">
               <button
                 onClick={() => handleLike(post.id, !!post.user_has_liked)}
-                className="flex items-center space-x-2 text-gray-400 hover:text-street-accent transition"
+                className={`flex items-center space-x-2 transition ${post.user_has_liked ? 'text-red-400' : 'text-gray-400 hover:text-street-accent'}`}
               >
-                <span>{post.user_has_liked ? '❤️' : '🤍'}</span>
+                <Heart size={22} fill={post.user_has_liked ? 'currentColor' : 'none'} />
                 <span className="text-sm font-semibold">{post.likes_count || 0}</span>
               </button>
 
@@ -698,7 +719,7 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
                 onClick={() => toggleComments(post.id)}
                 className="flex items-center space-x-2 text-gray-400 hover:text-street-accent transition"
               >
-                <span>💬</span>
+                <MessageCircle size={22} />
                 <span className="text-sm font-semibold">{post.comments_count || 0}</span>
               </button>
             </div>
@@ -771,7 +792,7 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
                 </div>
 
                 {user && (
-                  <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="flex items-center gap-2 bg-street-900 border border-street-700 rounded-2xl px-3 py-2">
                     <input
                       type="text"
                       value={newComment[post.id] || ''}
@@ -788,15 +809,15 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
                         }
                       }}
                       placeholder="Ajouter un commentaire..."
-                      className="flex-1 px-3 py-2 bg-street-900 border border-street-700 text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-street-accent placeholder-gray-500"
+                      className="flex-1 bg-transparent outline-none text-white text-sm placeholder-gray-500"
                     />
                     <button
                       type="button"
                       onClick={() => handleAddComment(post.id)}
-                      disabled={!!submittingComment[post.id]}
-                      className="w-full sm:w-auto px-4 py-2 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover text-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!!submittingComment[post.id] || !(newComment[post.id] || '').trim()}
+                      className="p-1 text-street-accent hover:text-street-accentHover transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {submittingComment[post.id] ? '...' : 'Publier'}
+                      {submittingComment[post.id] ? <span className="text-xs text-gray-400">…</span> : <Send size={18} />}
                     </button>
                   </div>
                 )}

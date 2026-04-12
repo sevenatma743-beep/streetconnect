@@ -3,10 +3,23 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Heart, MessageCircle, Send, Trash2 } from 'lucide-react'
+import { ArrowLeft, Heart, MessageCircle, Send } from 'lucide-react'
+import Image from 'next/image'
 
 import { useAuth } from '../../../contexts/AuthContext'
 import { supabase, deletePost } from '../../../lib/supabase'
+
+function formatTime(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const m = Math.floor(diff / 60000)
+  const h = Math.floor(diff / 3600000)
+  const d = Math.floor(diff / 86400000)
+  if (diff < 60000) return 'à l\'instant'
+  if (m < 60) return `${m} min`
+  if (h < 24) return `${h} h`
+  if (d < 7) return `${d} j`
+  return new Date(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+}
 
 export default function PostPage() {
   const router = useRouter()
@@ -37,6 +50,10 @@ export default function PostPage() {
   const [sendingCommentByPost, setSendingCommentByPost] = useState({})
   const [likingByPost, setLikingByPost] = useState({})
   const [deletingByPost, setDeletingByPost] = useState({})
+  const [deleteErrorByPost, setDeleteErrorByPost] = useState({})
+  const [openPostMenu, setOpenPostMenu] = useState(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [expandedComments, setExpandedComments] = useState({})
 
   const scrollRef = useRef(null)
   const redirectingAfterDeleteRef = useRef(false)
@@ -323,14 +340,15 @@ export default function PostPage() {
     if (!user?.id || !p?.id) return
     if (user.id !== p.user_id) return
     if (deletingByPost[p.id]) return
-    if (!confirm('Supprimer cette publication ?')) return
 
     setDeletingByPost((m) => ({ ...m, [p.id]: true }))
+    setDeleteErrorByPost((m) => ({ ...m, [p.id]: null }))
+    setConfirmDeleteId(null)
 
     try {
       const success = await deletePost(p.id, user.id)
       if (!success) {
-        alert('Impossible de supprimer le post')
+        setDeleteErrorByPost((m) => ({ ...m, [p.id]: 'Impossible de supprimer ce post' }))
         return
       }
       setPosts((prev) => {
@@ -343,7 +361,7 @@ export default function PostPage() {
       })
     } catch (e) {
       console.error('delete post error:', e)
-      alert('Impossible de supprimer le post')
+      setDeleteErrorByPost((m) => ({ ...m, [p.id]: 'Impossible de supprimer ce post' }))
     } finally {
       setDeletingByPost((m) => ({ ...m, [p.id]: false }))
     }
@@ -375,9 +393,9 @@ export default function PostPage() {
   const headerUser = posts[0]?.profiles?.username || 'StreetConnect'
 
   return (
-    <div className="h-screen bg-black flex flex-col">
+    <div className="h-screen bg-street-900 flex flex-col">
       {/* TOP BAR */}
-      <div className="sticky top-0 z-20 bg-black/80 backdrop-blur border-b border-street-800">
+      <div className="sticky top-0 z-20 bg-street-900/95 backdrop-blur">
         <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button onClick={handleBack} className="p-2 rounded-lg hover:bg-street-900 text-white">
@@ -397,32 +415,82 @@ export default function PostPage() {
         className="flex-1 overflow-y-auto overscroll-contain"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        <div className="max-w-md mx-auto px-4 py-4 space-y-8 pb-24">
+        <div className="max-w-md mx-auto space-y-1 pb-24">
           {posts.map((p) => {
             const isOwner = user?.id && user.id === p.user_id
             const author = p.profiles || {}
+            const isExpanded = expandedComments[p.id] ?? (p.id === postId)
 
             return (
               <div key={p.id} id={`post-${p.id}`} className="scroll-mt-16">
-                <div className={`bg-black border rounded-2xl overflow-hidden ${p.id === postId ? 'border-street-accent' : 'border-street-800'}`}>
-                  <div className="px-4 py-3 flex items-center justify-between border-b border-street-800 bg-black/60">
-                    <div className="text-white font-semibold text-sm">
-                      {author.username || 'Utilisateur'}
+                <div className="bg-street-900 overflow-hidden">
+                  <div className="px-4 py-3 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Image
+                        src={author.avatar_url || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'}
+                        alt={author.username || 'Anonyme'}
+                        width={40}
+                        height={40}
+                        className="w-10 h-10 rounded-full border-2 border-street-accent object-cover"
+                      />
+                      <div>
+                        <div className="text-white font-semibold text-sm">
+                          {author.username || 'Utilisateur'}
+                        </div>
+                        <div className="text-xs text-gray-500">{formatTime(p.created_at)}</div>
+                      </div>
                     </div>
 
                     {isOwner && (
-                      <button
-                        onClick={() => handleDeletePost(p)}
-                        disabled={!!deletingByPost[p.id]}
-                        className="p-2 rounded-lg hover:bg-street-900 text-red-400 disabled:opacity-50"
-                        title="Supprimer"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                      <div className="relative">
+                        {confirmDeleteId === p.id ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="text-xs text-gray-400 hover:text-white px-2 py-1 transition"
+                            >
+                              Annuler
+                            </button>
+                            <button
+                              onClick={() => handleDeletePost(p)}
+                              disabled={!!deletingByPost[p.id]}
+                              className="text-xs text-red-400 hover:text-red-300 font-semibold px-2 py-1 transition disabled:opacity-50"
+                            >
+                              {deletingByPost[p.id] ? '…' : 'Confirmer'}
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => setOpenPostMenu(openPostMenu === p.id ? null : p.id)}
+                              className="text-gray-400 hover:text-white transition px-2 py-1 text-xl leading-none"
+                            >
+                              ···
+                            </button>
+                            {openPostMenu === p.id && (
+                              <>
+                                <div className="fixed inset-0 z-10" onClick={() => setOpenPostMenu(null)} />
+                                <div className="absolute right-0 top-full mt-1 bg-street-800 border border-street-700 rounded-lg shadow-lg z-20 min-w-[130px]">
+                                  <button
+                                    onClick={() => { setOpenPostMenu(null); setConfirmDeleteId(p.id) }}
+                                    className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-street-700 rounded-lg transition"
+                                  >
+                                    Supprimer
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
 
-                  <div className="bg-street-950">
+                  {deleteErrorByPost[p.id] && (
+                    <div className="px-4 py-1 text-red-400 text-xs bg-black">{deleteErrorByPost[p.id]}</div>
+                  )}
+
+                  <div>
                     {p.media_url ? (
                       p.type === 'VIDEO' ? (
                         <video src={p.media_url} controls className="w-full h-auto" />
@@ -449,10 +517,13 @@ export default function PostPage() {
                         <span className="text-sm text-gray-300">{p.likes_count || 0}</span>
                       </button>
 
-                      <div className="flex items-center gap-2 text-white">
+                      <button
+                        onClick={() => setExpandedComments(prev => ({ ...prev, [p.id]: !(prev[p.id] ?? (p.id === postId)) }))}
+                        className="flex items-center gap-2 text-gray-400 hover:text-street-accent transition"
+                      >
                         <MessageCircle size={22} />
                         <span className="text-sm text-gray-300">{(p.comments || []).length}</span>
-                      </div>
+                      </button>
                     </div>
                   </div>
 
@@ -463,7 +534,7 @@ export default function PostPage() {
                     </div>
                   ) : null}
 
-                  <div className="px-4 pb-3 space-y-2">
+                  {isExpanded && <div className="px-4 pb-3 space-y-2">
                     {(p.comments || []).map((c) => {
                       const canDelete = user?.id && user.id === c.user_id
                       return (
@@ -487,9 +558,9 @@ export default function PostPage() {
                         </div>
                       )
                     })}
-                  </div>
+                  </div>}
 
-                  <div className="px-4 py-3 border-t border-street-800 bg-black">
+                  {isExpanded && <div className="px-4 py-3 border-t border-street-800 bg-black">
                     <div className="flex items-center gap-2 bg-street-950 border border-street-800 rounded-2xl px-3 py-2">
                       <input
                         value={commentTextByPost[p.id] || ''}
@@ -517,7 +588,7 @@ export default function PostPage() {
                         <Send size={18} />
                       </button>
                     </div>
-                  </div>
+                  </div>}
                 </div>
               </div>
             )
