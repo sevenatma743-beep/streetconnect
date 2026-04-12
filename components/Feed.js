@@ -18,6 +18,18 @@ import {
   unfollowUser
 } from '../lib/supabase'
 
+function formatTime(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const m = Math.floor(diff / 60000)
+  const h = Math.floor(diff / 3600000)
+  const d = Math.floor(diff / 86400000)
+  if (diff < 60000) return 'à l\'instant'
+  if (m < 60) return `${m} min`
+  if (h < 24) return `${h} h`
+  if (d < 7) return `${d} j`
+  return new Date(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+}
+
 export default function Feed({ onUserClick, feed, externalOpenComposer, onComposerOpened }) {
   const { user } = useAuth()
 
@@ -73,6 +85,12 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
 
   // Erreurs inline par post (suppression post / commentaire)
   const [postErrors, setPostErrors] = useState({})
+
+  // Légendes dépliées
+  const [expandedCaptions, setExpandedCaptions] = useState({})
+
+  // Menu ... ouvert (postId | null)
+  const [openPostMenu, setOpenPostMenu] = useState(null)
 
   // Realtime likes
   useEffect(() => {
@@ -586,7 +604,7 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
                     {post.username || 'Anonyme'}
                   </div>
                   <div className="text-xs text-gray-500">
-                    {new Date(post.created_at).toLocaleDateString('fr-FR')}
+                    {formatTime(post.created_at)}
                   </div>
                 </div>
               </div>
@@ -606,15 +624,29 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
                   </button>
                 )}
 
-                {/* Supprimer */}
+                {/* Menu propriétaire */}
                 {user && post.user_id === user.id && (
-                  <button
-                    onClick={() => handleDeletePost(post.id)}
-                    className="text-red-400 hover:text-red-300 text-sm font-semibold transition"
-                    title="Supprimer ce post"
-                  >
-                    🗑️
-                  </button>
+                  <div className="relative">
+                    <button
+                      onClick={() => setOpenPostMenu(openPostMenu === post.id ? null : post.id)}
+                      className="text-gray-400 hover:text-white transition px-2 py-1 text-xl leading-none"
+                    >
+                      ···
+                    </button>
+                    {openPostMenu === post.id && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setOpenPostMenu(null)} />
+                        <div className="absolute right-0 top-full mt-1 bg-street-800 border border-street-700 rounded-lg shadow-lg z-20 min-w-[130px]">
+                          <button
+                            onClick={() => { setOpenPostMenu(null); handleDeletePost(post.id) }}
+                            className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-street-700 rounded-lg transition"
+                          >
+                            Supprimer
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -622,18 +654,33 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
             {/* Media */}
             <div className="w-full">
               {post.media_url && (
-                post.type === 'IMAGE' ? (
-                  <img src={post.media_url} alt="Post media" className="w-full h-auto" />
-                ) : post.type === 'VIDEO' ? (
-                  <video src={post.media_url} controls className="w-full h-auto" />
-                ) : null
+                <div className="w-full bg-street-900 overflow-hidden">
+                  {post.type === 'IMAGE' && (
+                    <img src={post.media_url} alt="Post media" className="w-full aspect-[4/5] object-cover" />
+                  )}
+                  {post.type === 'VIDEO' && (
+                    <video src={post.media_url} controls className="w-full max-h-[560px] bg-black" />
+                  )}
+                </div>
               )}
             </div>
 
             {/* Caption texte-only — avant les actions */}
             {post.caption && !post.media_url && (
               <div className="bg-gradient-to-br from-street-700 to-street-900 min-h-[140px] flex items-center px-6 py-8">
-                <p className="text-white text-lg font-semibold leading-relaxed">{post.caption}</p>
+                <p className="text-white text-lg font-semibold leading-relaxed">
+                  {expandedCaptions[post.id] || post.caption.length <= 120
+                    ? post.caption
+                    : post.caption.slice(0, 120) + '…'}
+                  {!expandedCaptions[post.id] && post.caption.length > 120 && (
+                    <button
+                      onClick={() => setExpandedCaptions(prev => ({ ...prev, [post.id]: true }))}
+                      className="ml-1 text-gray-300 hover:text-white font-normal text-base transition"
+                    >
+                      voir plus
+                    </button>
+                  )}
+                </p>
               </div>
             )}
 
@@ -658,8 +705,26 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
 
             {/* Caption avec média — après les actions */}
             {post.caption && post.media_url && (
-              <div className="px-4 pt-2 pb-3">
-                <p className="text-sm text-gray-300">{post.caption}</p>
+              <div className="px-4 pt-1 pb-3">
+                <p className="text-sm text-gray-300">
+                  <span
+                    onClick={() => onUserClick && onUserClick(post.user_id)}
+                    className="font-semibold text-white mr-1 cursor-pointer hover:text-street-accent transition"
+                  >
+                    {post.username || 'Anonyme'}
+                  </span>
+                  {expandedCaptions[post.id] || post.caption.length <= 120
+                    ? post.caption
+                    : post.caption.slice(0, 120) + '…'}
+                  {!expandedCaptions[post.id] && post.caption.length > 120 && (
+                    <button
+                      onClick={() => setExpandedCaptions(prev => ({ ...prev, [post.id]: true }))}
+                      className="ml-1 text-gray-400 hover:text-white transition"
+                    >
+                      voir plus
+                    </button>
+                  )}
+                </p>
               </div>
             )}
 
