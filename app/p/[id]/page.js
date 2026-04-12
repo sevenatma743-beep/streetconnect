@@ -55,6 +55,7 @@ export default function PostPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [expandedComments, setExpandedComments] = useState({})
   const [expandedCaptions, setExpandedCaptions] = useState({})
+  const [postImageIndexes, setPostImageIndexes] = useState({})
 
   const scrollRef = useRef(null)
   const redirectingAfterDeleteRef = useRef(false)
@@ -96,6 +97,7 @@ export default function PostPage() {
           user_id,
           caption,
           media_url,
+          images,
           type,
           created_at,
           profiles:profiles(id, username, avatar_url)
@@ -139,6 +141,7 @@ export default function PostPage() {
           user_id,
           caption,
           media_url,
+          images,
           type,
           created_at,
           profiles:profiles(id, username, avatar_url)
@@ -258,11 +261,23 @@ export default function PostPage() {
     if (!user?.id || !p?.id) return
     if (likingByPost[p.id]) return
 
+    const nextLiked = !p.i_liked
+
+    // Optimistic UI — update before network call
+    setPosts((prev) =>
+      prev.map((x) =>
+        x.id === p.id
+          ? {
+              ...x,
+              i_liked: nextLiked,
+              likes_count: Math.max(0, (x.likes_count || 0) + (nextLiked ? 1 : -1))
+            }
+          : x
+      )
+    )
     setLikingByPost((m) => ({ ...m, [p.id]: true }))
 
     try {
-      const nextLiked = !p.i_liked
-
       if (nextLiked) {
         const { error } = await supabase.from('likes').insert({
           post_id: p.id,
@@ -277,20 +292,16 @@ export default function PostPage() {
           .eq('user_id', user.id)
         if (error) throw error
       }
-
+    } catch (e) {
+      console.error('like error:', e)
+      // Rollback on failure
       setPosts((prev) =>
         prev.map((x) =>
           x.id === p.id
-            ? {
-                ...x,
-                i_liked: nextLiked,
-                likes_count: Math.max(0, (x.likes_count || 0) + (nextLiked ? 1 : -1))
-              }
+            ? { ...x, i_liked: p.i_liked, likes_count: p.likes_count }
             : x
         )
       )
-    } catch (e) {
-      console.error('like error:', e)
     } finally {
       setLikingByPost((m) => ({ ...m, [p.id]: false }))
     }
@@ -416,7 +427,7 @@ export default function PostPage() {
         className="flex-1 overflow-y-auto overscroll-contain"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        <div className="max-w-md mx-auto space-y-1 pb-24">
+        <div className="max-w-md mx-auto pb-24">
           {posts.map((p) => {
             const isOwner = user?.id && user.id === p.user_id
             const author = p.profiles || {}
@@ -492,17 +503,38 @@ export default function PostPage() {
                   )}
 
                   <div>
-                    {p.media_url ? (
-                      p.type === 'VIDEO' ? (
-                        <video src={p.media_url} controls className="w-full h-auto" />
-                      ) : (
-                        <div className="w-full aspect-[4/5] overflow-hidden">
-                          <img src={p.media_url} alt="post" className="w-full h-full object-cover" />
+                    {p.type === 'VIDEO' && p.media_url ? (
+                      <video src={p.media_url} controls className="w-full h-auto" />
+                    ) : p.type === 'IMAGE' && (p.images?.length > 0 || p.media_url) ? (
+                      <div className="relative w-full aspect-[4/5] overflow-hidden bg-street-900">
+                        <div
+                          className="flex w-full h-full overflow-x-auto snap-x snap-mandatory"
+                          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
+                          onScroll={(e) => {
+                            const idx = Math.round(e.currentTarget.scrollLeft / e.currentTarget.offsetWidth)
+                            setPostImageIndexes(prev => ({ ...prev, [p.id]: idx }))
+                          }}
+                        >
+                          {(p.images?.length > 0 ? p.images : [p.media_url]).map((img, i) => (
+                            <img key={i} src={img} alt="Post" className="w-full h-full object-cover flex-shrink-0 snap-center" />
+                          ))}
                         </div>
-                      )
-                    ) : (
+                        {p.images?.length > 1 && (
+                          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 pointer-events-none">
+                            {p.images.map((_, i) => (
+                              <div
+                                key={i}
+                                className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                                  i === (postImageIndexes[p.id] || 0) ? 'bg-white' : 'bg-white/40'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : !p.media_url ? (
                       <div className="bg-gradient-to-br from-street-700 to-street-900 min-h-[140px] flex items-center px-6 py-8">
-                        <p className="text-white text-lg font-semibold leading-relaxed">
+                        <p className="text-white text-lg font-semibold leading-relaxed break-words">
                           {expandedCaptions[p.id] || (p.caption || '').length <= 120
                             ? p.caption
                             : p.caption.slice(0, 120) + '…'}
@@ -516,7 +548,7 @@ export default function PostPage() {
                           )}
                         </p>
                       </div>
-                    )}
+                    ) : null}
                   </div>
 
                   <div className="px-4 py-3 flex items-center justify-between">
@@ -543,12 +575,12 @@ export default function PostPage() {
                   </div>
 
                   {p.media_url && p.caption ? (
-                    <div className="px-4 pb-3 text-gray-200 text-sm">
+                    <div className="px-4 pb-3 text-gray-200 text-sm break-words">
                       <span className="font-semibold text-white">{author.username || 'User'}</span>{' '}
-                      {expandedCaptions[p.id] || p.caption.length <= 120
+                      {expandedCaptions[p.id] || p.caption.length <= 80
                         ? p.caption
-                        : p.caption.slice(0, 120) + '…'}
-                      {!expandedCaptions[p.id] && p.caption.length > 120 && (
+                        : p.caption.slice(0, 80) + '…'}
+                      {!expandedCaptions[p.id] && p.caption.length > 80 && (
                         <button
                           onClick={() => setExpandedCaptions(prev => ({ ...prev, [p.id]: true }))}
                           className="ml-1 text-gray-400 hover:text-white transition"

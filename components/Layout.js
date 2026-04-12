@@ -1,7 +1,7 @@
 'use client'
 import { Home, MapPin, ShoppingCart, User, MessageCircle, Bell, Search, Plus } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 export default function Layout({
@@ -12,10 +12,12 @@ export default function Layout({
   hideBottomNav = false,
   unreadMessagesCount = 0,
   unreadNotificationsCount = 0,
-  onCreatePost
+  onCreatePost,
+  onFileSelected
 }) {
   const { user } = useAuth()
   const [profile, setProfile] = useState(null)
+  const pickerRef = useRef(null)
 
   useEffect(() => {
     if (user) getProfile()
@@ -126,8 +128,20 @@ export default function Layout({
 
           {/* Centre : bouton + flottant (mobile uniquement) */}
           <div className="flex items-end justify-center md:hidden" style={{ marginTop: '-20px' }}>
+            <input
+              ref={pickerRef}
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files || [])
+                if (files.length > 0) onFileSelected?.(files)
+                e.target.value = ''
+              }}
+            />
             <button
-              onClick={onCreatePost}
+              onClick={() => { onCreatePost?.(); pickerRef.current?.click() }}
               aria-label="Créer un post"
               className="w-14 h-14 rounded-full bg-street-900 border-2 border-street-accent flex items-center justify-center transition-transform active:scale-95"
               style={{ boxShadow: '0 0 14px rgba(255, 215, 0, 0.3)' }}

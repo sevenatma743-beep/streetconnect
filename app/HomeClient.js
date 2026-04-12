@@ -34,6 +34,7 @@ export default function HomeClient() {
 
   // Composer feed (signal externe pour le bouton + navbar)
   const [openFeedComposer, setOpenFeedComposer] = useState(false)
+  const [externalFile, setExternalFile] = useState(null)
 
   // Shop deep link
   const [shopInitialProductId, setShopInitialProductId] = useState(null)
@@ -261,6 +262,7 @@ export default function HomeClient() {
       onOpenNotifications={handleOpenNotifications}
       onOpenSearch={handleOpenSearch}
       onCreatePost={handleCreatePost}
+      onFileSelected={(files) => setExternalFile(files)}
     >
       {activeTab === 'feed' && (
         <Feed
@@ -268,6 +270,8 @@ export default function HomeClient() {
           feed={feed}
           externalOpenComposer={openFeedComposer}
           onComposerOpened={() => setOpenFeedComposer(false)}
+          externalFile={externalFile}
+          onExternalFileHandled={() => setExternalFile(null)}
         />
       )}
 

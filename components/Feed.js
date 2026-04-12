@@ -8,6 +8,7 @@ import {
   supabase,
   createPost,
   uploadPostMedia,
+  uploadPostImages,
   likePost,
   unlikePost,
   getComments,
@@ -30,7 +31,7 @@ function formatTime(dateStr) {
   return new Date(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
 }
 
-export default function Feed({ onUserClick, feed, externalOpenComposer, onComposerOpened }) {
+export default function Feed({ onUserClick, feed, externalOpenComposer, onComposerOpened, externalFile, onExternalFileHandled }) {
   const { user } = useAuth()
 
   const posts = feed?.posts || []
@@ -48,16 +49,36 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
   const [showComposerModal, setShowComposerModal] = useState(false)
   const [composerStep, setComposerStep] = useState('media')
 
-  // Ref pour input file dans la modal
+  // Ref pour input file dans la modal (changer de fichier depuis l'étape média)
   const modalFileInputRef = useRef(null)
 
-  // Ouverture composer depuis signal externe (bouton + navbar)
+  // Ref pour input "ajouter une image" (mobile — itératif)
+  const addImageInputRef = useRef(null)
+
+  // Sélection multi-images (mobile composer)
+  const [selectedImages, setSelectedImages] = useState([])
+  const [imagePreviews, setImagePreviews] = useState([])
+
+  // Signal externe — reset uniquement, pas d'ouverture sans fichier (média obligatoire)
   useEffect(() => {
     if (!externalOpenComposer) return
-    setComposerStep('media')
-    setShowComposerModal(true)
     onComposerOpened?.()
   }, [externalOpenComposer])
+
+  // Fichiers sélectionnés depuis le bouton + (Layout) — geste synchrone iOS-safe
+  useEffect(() => {
+    if (!externalFile || !externalFile.length) return
+    const files = externalFile
+    const video = files.find(f => f.type.startsWith('video/'))
+    if (video) {
+      setMediaWithPreview(video)
+    } else {
+      files.forEach(f => addImageToSelection(f))
+    }
+    setComposerStep('media')
+    setShowComposerModal(true)
+    onExternalFileHandled?.()
+  }, [externalFile])
 
   function setMediaWithPreview(file) {
     setPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null })
@@ -65,13 +86,35 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
     if (file) setPreviewUrl(URL.createObjectURL(file))
   }
 
+  function addImageToSelection(file) {
+    setSelectedImages(prev => {
+      if (prev.length >= 5) return prev
+      return [...prev, file]
+    })
+    setImagePreviews(prev => {
+      if (prev.length >= 5) return prev
+      return [...prev, URL.createObjectURL(file)]
+    })
+  }
+
+  function removeImage(idx) {
+    setImagePreviews(prev => {
+      URL.revokeObjectURL(prev[idx])
+      return prev.filter((_, i) => i !== idx)
+    })
+    setSelectedImages(prev => prev.filter((_, i) => i !== idx))
+  }
+
   function resetComposer() {
+    setImagePreviews(prev => { prev.forEach(url => URL.revokeObjectURL(url)); return [] })
+    setSelectedImages([])
     setPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null })
     setNewPostMedia(null)
     setNewPostCaption('')
     setShowComposerModal(false)
     setComposerStep('media')
     if (modalFileInputRef.current) modalFileInputRef.current.value = ''
+    if (addImageInputRef.current) addImageInputRef.current.value = ''
   }
 
   // États pour commentaires
@@ -88,6 +131,9 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
 
   // Légendes dépliées
   const [expandedCaptions, setExpandedCaptions] = useState({})
+
+  // Index image actif par post (carrousel)
+  const [postImageIndexes, setPostImageIndexes] = useState({})
 
   // Menu ... ouvert (postId | null)
   const [openPostMenu, setOpenPostMenu] = useState(null)
@@ -189,7 +235,9 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
 
   async function handleCreatePost(e) {
     e.preventDefault()
-    if (!user || (!newPostCaption.trim() && !newPostMedia)) return
+    const hasImages = selectedImages.length > 0
+    const hasSingleMedia = !!newPostMedia && !hasImages
+    if (!user || (!newPostCaption.trim() && !hasImages && !hasSingleMedia)) return
 
     try {
       setPosting(true)
@@ -197,8 +245,18 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
 
       let mediaUrl = null
       let postType = 'TEXT'
+      let imagesUrls = null
 
-      if (newPostMedia) {
+      if (hasImages) {
+        const urls = await uploadPostImages(selectedImages, user.id)
+        if (!urls) {
+          setLocalError('Erreur upload images')
+          return
+        }
+        imagesUrls = urls
+        mediaUrl = urls[0]
+        postType = 'IMAGE'
+      } else if (hasSingleMedia) {
         mediaUrl = await uploadPostMedia(newPostMedia, user.id)
         if (!mediaUrl) {
           setLocalError('Erreur upload média')
@@ -211,7 +269,8 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
         user_id: user.id,
         caption: newPostCaption.trim() || null,
         media_url: mediaUrl,
-        type: postType
+        type: postType,
+        ...(imagesUrls ? { images: imagesUrls } : {})
       }
 
       const created = await createPost(postData)
@@ -221,8 +280,6 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
       }
 
       resetComposer()
-
-      // revalidate feed
       await safeRevalidate()
     } catch (err) {
       console.error('Erreur création post:', err)
@@ -299,7 +356,10 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
       }
 
       const comment = await addComment(commentData)
-      if (!comment) return
+      if (!comment) {
+        setPostErrors(prev => ({ ...prev, [postId]: 'Impossible d\'envoyer le commentaire' }))
+        return
+      }
 
       setComments(prev => ({
         ...prev,
@@ -323,6 +383,7 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
       safeRevalidate()
     } catch (err) {
       console.error('Erreur ajout commentaire:', err)
+      setPostErrors(prev => ({ ...prev, [postId]: 'Impossible d\'envoyer le commentaire' }))
     } finally {
       setSubmittingComment(prev => ({ ...prev, [postId]: false }))
     }
@@ -409,7 +470,7 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-0 space-y-1">
+    <div className="max-w-2xl mx-auto px-0">
 
       {/* Composer COMPLET desktop */}
       {user && (
@@ -456,7 +517,9 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
             {/* Header */}
             <div className="sticky top-0 bg-street-800 border-b border-street-700 p-4 flex items-center justify-between z-10 flex-shrink-0">
               <h3 className="text-lg font-bold text-white">
-                {composerStep === 'media' ? 'Choisir un média' : 'Ajouter une légende'}
+                {composerStep === 'media'
+                  ? selectedImages.length > 0 ? `Photos (${selectedImages.length}/5)` : 'Vidéo'
+                  : 'Légende'}
               </h3>
               <button onClick={resetComposer} className="text-gray-400 hover:text-white">
                 <X size={24} />
@@ -467,61 +530,90 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
             {composerStep === 'media' && (
               <div className="flex flex-col flex-1 min-h-0">
                 <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
-                  <input
-                    ref={modalFileInputRef}
-                    type="file"
-                    accept="image/*,video/*"
-                    onChange={(e) => setMediaWithPreview(e.target.files?.[0] || null)}
-                    className="hidden"
-                  />
-                  {!previewUrl ? (
-                    <button
-                      type="button"
-                      onClick={() => modalFileInputRef.current?.click()}
-                      className="flex-1 min-h-[300px] flex flex-col items-center justify-center gap-3 border-2 border-dashed border-street-600 rounded-xl text-gray-400 hover:border-street-accent hover:text-street-accent transition"
-                    >
-                      <ImageIcon size={40} />
-                      <span className="font-semibold text-base">Choisir une photo ou une vidéo</span>
-                    </button>
-                  ) : (
-                    <div className="flex flex-col gap-3">
-                      {newPostMedia?.type.startsWith('image/') && (
-                        <img src={previewUrl} alt="Preview" className="w-full rounded-xl object-contain max-h-[60vh]" />
+
+                  {/* Mode images — grille itérative (max 5) */}
+                  {selectedImages.length > 0 && (
+                    <>
+                      <input
+                        ref={addImageInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => {
+                          Array.from(e.target.files || []).forEach(file => addImageToSelection(file))
+                          e.target.value = ''
+                        }}
+                      />
+                      <div className="grid grid-cols-3 gap-2">
+                        {imagePreviews.map((url, i) => (
+                          <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-street-900">
+                            <img src={url} alt="" className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => removeImage(i)}
+                              className="absolute top-1 right-1 bg-black/60 rounded-full p-0.5"
+                            >
+                              <X size={14} className="text-white" />
+                            </button>
+                          </div>
+                        ))}
+                        {selectedImages.length < 5 && (
+                          <button
+                            type="button"
+                            onClick={() => addImageInputRef.current?.click()}
+                            className="aspect-square rounded-xl border-2 border-dashed border-street-600 flex items-center justify-center text-gray-500 hover:border-street-accent hover:text-street-accent transition"
+                          >
+                            <ImageIcon size={24} />
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Mode vidéo — comportement inchangé */}
+                  {newPostMedia && (
+                    <>
+                      <input
+                        ref={modalFileInputRef}
+                        id="modal-file-input"
+                        type="file"
+                        accept="image/*,video/*"
+                        onChange={(e) => setMediaWithPreview(e.target.files?.[0] || null)}
+                        className="hidden"
+                      />
+                      {newPostMedia.type.startsWith('video/') && (
+                        <video src={previewUrl} controls className="w-full rounded-xl max-h-[65vh]" />
                       )}
-                      {newPostMedia?.type.startsWith('video/') && (
-                        <video src={previewUrl} controls className="w-full rounded-xl max-h-[60vh]" />
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => { setMediaWithPreview(null); if (modalFileInputRef.current) modalFileInputRef.current.value = '' }}
-                        className="text-sm text-gray-400 hover:text-white underline text-center"
+                      <label
+                        htmlFor="modal-file-input"
+                        className="text-sm text-gray-400 hover:text-white underline text-center cursor-pointer"
                       >
                         Changer de fichier
-                      </button>
-                    </div>
+                      </label>
+                    </>
                   )}
                 </div>
+
                 <div
-                  className="sticky bottom-0 bg-street-800 border-t border-street-700 p-4 flex flex-col gap-2 flex-shrink-0"
+                  className="sticky bottom-0 bg-street-800 border-t border-street-700 p-4 flex gap-3 flex-shrink-0"
                   style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
                 >
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={resetComposer}
-                      className="flex-1 px-4 py-3 bg-street-700 text-white font-bold rounded-lg hover:bg-street-600 transition"
-                    >
-                      Annuler
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!newPostMedia}
-                      onClick={() => setComposerStep('caption')}
-                      className="flex-1 px-4 py-3 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover disabled:opacity-50 disabled:cursor-not-allowed transition"
-                    >
-                      Continuer
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={resetComposer}
+                    className="flex-1 px-4 py-3 bg-street-700 text-white font-bold rounded-lg hover:bg-street-600 transition"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selectedImages.length === 0 && !newPostMedia}
+                    onClick={() => setComposerStep('caption')}
+                    className="flex-1 px-4 py-3 bg-street-accent text-street-900 font-bold rounded-lg hover:bg-street-accentHover disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  >
+                    Continuer
+                  </button>
                 </div>
               </div>
             )}
@@ -530,18 +622,22 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
             {composerStep === 'caption' && (
               <form onSubmit={handleCreatePost} className="flex flex-col flex-1 min-h-0">
                 <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
-                  {/* Vignette média */}
-                  {previewUrl && (
-                    <div className="flex items-center gap-3 bg-street-900 rounded-xl p-2">
-                      {newPostMedia?.type.startsWith('image/') && (
-                        <img src={previewUrl} alt="Preview" className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
-                      )}
-                      {newPostMedia?.type.startsWith('video/') && (
-                        <video src={previewUrl} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
-                      )}
-                      <span className="text-gray-400 text-sm truncate">{newPostMedia?.name}</span>
-                    </div>
-                  )}
+                  <div className="bg-street-900 rounded-xl p-2">
+                    {selectedImages.length > 0 ? (
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {imagePreviews.map((url, i) => (
+                          <img key={i} src={url} alt="" className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        {newPostMedia?.type.startsWith('video/') && (
+                          <video src={previewUrl} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
+                        )}
+                        <span className="text-gray-400 text-sm truncate">{newPostMedia?.name}</span>
+                      </div>
+                    )}
+                  </div>
                   <textarea
                     value={newPostCaption}
                     onChange={(e) => setNewPostCaption(e.target.value)}
@@ -673,23 +769,46 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
             </div>
 
             {/* Media */}
-            <div className="w-full">
-              {post.media_url && (
-                <div className="w-full bg-street-900 overflow-hidden">
-                  {post.type === 'IMAGE' && (
-                    <img src={post.media_url} alt="Post media" className="w-full aspect-[4/5] object-cover" />
-                  )}
-                  {post.type === 'VIDEO' && (
-                    <video src={post.media_url} controls className="w-full max-h-[560px] bg-black" />
-                  )}
-                </div>
-              )}
-            </div>
+            {post.media_url && (
+              <div className="w-full">
+                {post.type === 'IMAGE' && (
+                  <div className="relative w-full aspect-[4/5] overflow-hidden bg-street-900">
+                    <div
+                      className="flex w-full h-full overflow-x-auto snap-x snap-mandatory"
+                      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
+                      onScroll={(e) => {
+                        const idx = Math.round(e.currentTarget.scrollLeft / e.currentTarget.offsetWidth)
+                        setPostImageIndexes(prev => ({ ...prev, [post.id]: idx }))
+                      }}
+                    >
+                      {(post.images?.length > 0 ? post.images : [post.media_url]).map((img, i) => (
+                        <img key={i} src={img} alt="Post" className="w-full h-full object-cover flex-shrink-0 snap-center" />
+                      ))}
+                    </div>
+                    {post.images?.length > 1 && (
+                      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 pointer-events-none">
+                        {post.images.map((_, i) => (
+                          <div
+                            key={i}
+                            className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                              i === (postImageIndexes[post.id] || 0) ? 'bg-white' : 'bg-white/40'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {post.type === 'VIDEO' && (
+                  <video src={post.media_url} controls className="w-full max-h-[560px] bg-black" />
+                )}
+              </div>
+            )}
 
             {/* Caption texte-only — avant les actions */}
             {post.caption && !post.media_url && (
               <div className="bg-gradient-to-br from-street-700 to-street-900 min-h-[140px] flex items-center px-6 py-8">
-                <p className="text-white text-lg font-semibold leading-relaxed">
+                <p className="text-white text-lg font-semibold leading-relaxed break-words">
                   {expandedCaptions[post.id] || post.caption.length <= 120
                     ? post.caption
                     : post.caption.slice(0, 120) + '…'}
@@ -727,17 +846,17 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
             {/* Caption avec média — après les actions */}
             {post.caption && post.media_url && (
               <div className="px-4 pt-1 pb-3">
-                <p className="text-sm text-gray-300">
+                <p className="text-sm text-gray-300 break-words">
                   <span
                     onClick={() => onUserClick && onUserClick(post.user_id)}
                     className="font-semibold text-white mr-1 cursor-pointer hover:text-street-accent transition"
                   >
                     {post.username || 'Anonyme'}
                   </span>
-                  {expandedCaptions[post.id] || post.caption.length <= 120
+                  {expandedCaptions[post.id] || post.caption.length <= 80
                     ? post.caption
-                    : post.caption.slice(0, 120) + '…'}
-                  {!expandedCaptions[post.id] && post.caption.length > 120 && (
+                    : post.caption.slice(0, 80) + '…'}
+                  {!expandedCaptions[post.id] && post.caption.length > 80 && (
                     <button
                       onClick={() => setExpandedCaptions(prev => ({ ...prev, [post.id]: true }))}
                       className="ml-1 text-gray-400 hover:text-white transition"

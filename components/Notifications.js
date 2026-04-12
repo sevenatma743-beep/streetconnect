@@ -29,7 +29,6 @@ export default function Notifications({ onUserClick, onOpenProduct }) {
           filter: `user_id=eq.${user.id}`
         },
         async (payload) => {
-          console.log('[NOTIF SCREEN]', payload.new)
           const notif = payload.new
           const { data: actor } = await supabase
             .from('profiles')
