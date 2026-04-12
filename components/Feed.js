@@ -772,7 +772,7 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
             {post.media_url && (
               <div className="w-full">
                 {post.type === 'IMAGE' && (
-                  <div className="relative w-full aspect-[4/5] overflow-hidden bg-street-900">
+                  <div className="relative w-full aspect-[4/5] overflow-hidden bg-black">
                     <div
                       className="flex w-full h-full overflow-x-auto snap-x snap-mandatory"
                       style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
@@ -782,7 +782,7 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
                       }}
                     >
                       {(post.images?.length > 0 ? post.images : [post.media_url]).map((img, i) => (
-                        <img key={i} src={img} alt="Post" className="w-full h-full object-cover flex-shrink-0 snap-center" />
+                        <img key={i} src={img} alt="Post" className="w-full h-full object-contain flex-shrink-0 snap-center" />
                       ))}
                     </div>
                     {post.images?.length > 1 && (
@@ -800,7 +800,9 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
                   </div>
                 )}
                 {post.type === 'VIDEO' && (
-                  <video src={post.media_url} controls className="w-full max-h-[560px] bg-black" />
+                  <div className="relative w-full aspect-[4/5] bg-black flex items-center justify-center">
+                    <video src={post.media_url} controls className="w-full h-full object-cover" />
+                  </div>
                 )}
               </div>
             )}

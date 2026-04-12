@@ -504,9 +504,11 @@ export default function PostPage() {
 
                   <div>
                     {p.type === 'VIDEO' && p.media_url ? (
-                      <video src={p.media_url} controls className="w-full h-auto" />
+                      <div className="relative w-full aspect-[4/5] bg-black flex items-center justify-center">
+                        <video src={p.media_url} controls className="w-full h-full object-cover" />
+                      </div>
                     ) : p.type === 'IMAGE' && (p.images?.length > 0 || p.media_url) ? (
-                      <div className="relative w-full aspect-[4/5] overflow-hidden bg-street-900">
+                      <div className="relative w-full aspect-[4/5] overflow-hidden bg-black">
                         <div
                           className="flex w-full h-full overflow-x-auto snap-x snap-mandatory"
                           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
@@ -516,7 +518,7 @@ export default function PostPage() {
                           }}
                         >
                           {(p.images?.length > 0 ? p.images : [p.media_url]).map((img, i) => (
-                            <img key={i} src={img} alt="Post" className="w-full h-full object-cover flex-shrink-0 snap-center" />
+                            <img key={i} src={img} alt="Post" className="w-full h-full object-contain flex-shrink-0 snap-center" />
                           ))}
                         </div>
                         {p.images?.length > 1 && (
