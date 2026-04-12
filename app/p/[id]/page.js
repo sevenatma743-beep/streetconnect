@@ -54,6 +54,7 @@ export default function PostPage() {
   const [openPostMenu, setOpenPostMenu] = useState(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [expandedComments, setExpandedComments] = useState({})
+  const [expandedCaptions, setExpandedCaptions] = useState({})
 
   const scrollRef = useRef(null)
   const redirectingAfterDeleteRef = useRef(false)
@@ -495,11 +496,25 @@ export default function PostPage() {
                       p.type === 'VIDEO' ? (
                         <video src={p.media_url} controls className="w-full h-auto" />
                       ) : (
-                        <img src={p.media_url} alt="post" className="w-full h-auto object-cover" />
+                        <div className="w-full aspect-[4/5] overflow-hidden">
+                          <img src={p.media_url} alt="post" className="w-full h-full object-cover" />
+                        </div>
                       )
                     ) : (
                       <div className="bg-gradient-to-br from-street-700 to-street-900 min-h-[140px] flex items-center px-6 py-8">
-                        <p className="text-white text-lg font-semibold leading-relaxed">{p.caption}</p>
+                        <p className="text-white text-lg font-semibold leading-relaxed">
+                          {expandedCaptions[p.id] || (p.caption || '').length <= 120
+                            ? p.caption
+                            : p.caption.slice(0, 120) + '…'}
+                          {!expandedCaptions[p.id] && (p.caption || '').length > 120 && (
+                            <button
+                              onClick={() => setExpandedCaptions(prev => ({ ...prev, [p.id]: true }))}
+                              className="ml-1 text-gray-300 hover:text-white font-normal text-base transition"
+                            >
+                              voir plus
+                            </button>
+                          )}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -527,10 +542,20 @@ export default function PostPage() {
                     </div>
                   </div>
 
-                  {p.caption ? (
+                  {p.media_url && p.caption ? (
                     <div className="px-4 pb-3 text-gray-200 text-sm">
                       <span className="font-semibold text-white">{author.username || 'User'}</span>{' '}
-                      {p.caption}
+                      {expandedCaptions[p.id] || p.caption.length <= 120
+                        ? p.caption
+                        : p.caption.slice(0, 120) + '…'}
+                      {!expandedCaptions[p.id] && p.caption.length > 120 && (
+                        <button
+                          onClick={() => setExpandedCaptions(prev => ({ ...prev, [p.id]: true }))}
+                          className="ml-1 text-gray-400 hover:text-white transition"
+                        >
+                          voir plus
+                        </button>
+                      )}
                     </div>
                   ) : null}
 

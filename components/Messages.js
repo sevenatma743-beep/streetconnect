@@ -22,6 +22,7 @@ export default function Messages({
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState(null)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -374,6 +375,7 @@ export default function Messages({
     e.preventDefault()
     if (!newMessage.trim() || !activeConversation || sending) return
 
+    setSendError(null)
     setSending(true)
 
     try {
@@ -399,6 +401,7 @@ export default function Messages({
 
       if (error) {
         console.error('❌ Error sending message:', error)
+        setSendError('Impossible d\'envoyer le message')
         return
       }
 
@@ -414,6 +417,7 @@ export default function Messages({
       ))
     } catch (err) {
       console.error('💥 Exception in handleSendMessage:', err)
+      setSendError('Impossible d\'envoyer le message')
     } finally {
       setSending(false)
     }
@@ -526,7 +530,7 @@ export default function Messages({
           <img
             src={displayAvatar}
             alt={displayName}
-            className={`w-10 h-10 rounded-full border-2 border-street-accent ${isDeletedAccount ? 'opacity-40' : 'cursor-pointer'}`}
+            className={`w-10 h-10 rounded-full object-cover border-2 border-street-accent ${isDeletedAccount ? 'opacity-40' : 'cursor-pointer'}`}
             onClick={isDeletedAccount ? undefined : () => onUserClick?.(activeConversation.otherUser?.id, activeConversation.id)}
           />
           <div className="flex-1">
@@ -564,6 +568,9 @@ export default function Messages({
           <div ref={messagesEndRef} />
         </div>
 
+        {sendError && (
+          <p className="px-4 pt-2 text-red-400 text-xs text-center bg-street-800">{sendError}</p>
+        )}
         <form
           onSubmit={handleSendMessage}
           className="p-4 border-t border-street-700 bg-street-800"
@@ -594,7 +601,7 @@ export default function Messages({
   // RENDER: INBOX VIEW (✅ sans gros titre + sans flèche)
   // ============================================
   return (
-    <div className="p-4 bg-street-900 min-h-screen">
+    <div className="p-4 bg-street-900 min-h-full">
       <div className="mb-4 relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
         <input

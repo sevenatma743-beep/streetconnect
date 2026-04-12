@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { ShoppingCart, Heart, ChevronLeft, ChevronRight, ChevronDown, X, ExternalLink, Filter } from 'lucide-react'
+import { ShoppingCart, Heart, ChevronDown, X, ExternalLink, Filter } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 
@@ -35,6 +35,7 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
     category: 'Équipement',
     city: '',
     brand: '',
+    condition: 'Très bon état',
     listingType: 'vente'
   })
   const [openMenuId, setOpenMenuId] = useState(null)
@@ -251,12 +252,13 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
           image_url: imageUrls[0],
           city: newProduct.city,
           brand: newProduct.brand || null,
+          condition: newProduct.condition,
           user_id: user.id
         })
 
       setShowAddProduct(false)
       setFormError('')
-      setNewProduct({ name: '', description: '', price: '', category: 'Équipement', city: '', brand: '', listingType: 'vente' })
+      setNewProduct({ name: '', description: '', price: '', category: 'Équipement', city: '', brand: '', condition: 'Très bon état', listingType: 'vente' })
       setSelectedImages([])
       setImagePreviews([])
       await loadMarketplaceProducts()
@@ -484,6 +486,22 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
 
               <div>
                 <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  État *
+                </label>
+                <select
+                  value={newProduct.condition}
+                  onChange={(e) => setNewProduct({...newProduct, condition: e.target.value})}
+                  className="w-full px-4 py-2 bg-street-900 border border-street-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-street-accent"
+                >
+                  <option>Neuf</option>
+                  <option>Très bon état</option>
+                  <option>Bon état</option>
+                  <option>État correct</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
                   Ville *
                 </label>
                 <input
@@ -613,34 +631,37 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
             {/* Body scrollable */}
             <div className="flex-1 overflow-y-auto">
               {/* Carousel grand format */}
-              <div className="relative aspect-square bg-street-900">
-                <img
-                  src={(selectedMarketplaceProduct.images || [selectedMarketplaceProduct.image_url])[modalImageIndex]}
-                  alt={selectedMarketplaceProduct.name}
-                  className="w-full h-full object-cover"
-                />
-                {(selectedMarketplaceProduct.images || [selectedMarketplaceProduct.image_url]).length > 1 && (
-                  <>
-                    <button
-                      onClick={() => setModalImageIndex(i => i === 0 ? (selectedMarketplaceProduct.images || [selectedMarketplaceProduct.image_url]).length - 1 : i - 1)}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/50 p-2 rounded-full hover:bg-black/70 transition"
+              {(() => {
+                const modalImages = selectedMarketplaceProduct.images || [selectedMarketplaceProduct.image_url]
+                return (
+                  <div className="relative aspect-square bg-street-900">
+                    <div
+                      className="flex w-full h-full overflow-x-auto snap-x snap-mandatory"
+                      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
+                      onScroll={(e) => {
+                        const idx = Math.round(e.currentTarget.scrollLeft / e.currentTarget.offsetWidth)
+                        setModalImageIndex(idx)
+                      }}
                     >
-                      <ChevronLeft size={20} className="text-white" />
-                    </button>
-                    <button
-                      onClick={() => setModalImageIndex(i => i === (selectedMarketplaceProduct.images || [selectedMarketplaceProduct.image_url]).length - 1 ? 0 : i + 1)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/50 p-2 rounded-full hover:bg-black/70 transition"
-                    >
-                      <ChevronRight size={20} className="text-white" />
-                    </button>
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                      {(selectedMarketplaceProduct.images || [selectedMarketplaceProduct.image_url]).map((_, i) => (
-                        <div key={i} className={`w-2 h-2 rounded-full ${i === modalImageIndex ? 'bg-white' : 'bg-white/40'}`} />
+                      {modalImages.map((img, i) => (
+                        <img
+                          key={i}
+                          src={img}
+                          alt={selectedMarketplaceProduct.name}
+                          className="w-full h-full object-cover flex-shrink-0 snap-center"
+                        />
                       ))}
                     </div>
-                  </>
-                )}
-              </div>
+                    {modalImages.length > 1 && (
+                      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 pointer-events-none">
+                        {modalImages.map((_, i) => (
+                          <div key={i} className={`w-2 h-2 rounded-full transition-colors ${i === modalImageIndex ? 'bg-white' : 'bg-white/40'}`} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* Détails */}
               <div className="p-4 space-y-4">
@@ -658,9 +679,14 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
                       : <span className="text-white">{selectedMarketplaceProduct.price.toFixed(2)}€</span>
                     }
                   </div>
-                  {selectedMarketplaceProduct.city && (
-                    <span className="text-sm text-gray-400">📍 {selectedMarketplaceProduct.city}</span>
-                  )}
+                  <div className="text-right">
+                    {selectedMarketplaceProduct.city && (
+                      <p className="text-sm text-gray-400">📍 {selectedMarketplaceProduct.city}</p>
+                    )}
+                    {selectedMarketplaceProduct.condition && (
+                      <p className="text-xs text-gray-500 mt-0.5">{selectedMarketplaceProduct.condition}</p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Bloc vendeur */}
@@ -1022,7 +1048,7 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
                   <div
                     key={product.id}
                     onClick={() => { setSelectedMarketplaceProduct(product); setModalImageIndex(0); setOpenMenuId(null) }}
-                    className="bg-street-800 rounded-2xl p-4 border border-street-700 hover:border-street-accent transition-all group relative cursor-pointer"
+                    className="bg-street-800 rounded-2xl p-3 border border-street-700 hover:border-street-accent transition-all group relative cursor-pointer"
                   >
                     {deleteConfirmId === product.id && (
                       <div
@@ -1047,7 +1073,7 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
                       </div>
                     )}
 
-                    <div className="absolute top-2 right-2 z-10 flex gap-2">
+                    <div className="absolute top-3 right-3 z-10 flex gap-2">
                       {user && (
                         <button
                           onClick={(e) => { e.stopPropagation(); toggleFavorite(product.id) }}
@@ -1082,69 +1108,49 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
                     </div>
 
                     <div className="aspect-square rounded-xl bg-street-900 overflow-hidden mb-3 relative">
-                      <img 
-                        src={productImages[currentImageIndex]} 
-                        alt={product.name} 
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" 
-                      />
-                      
+                      <div
+                        className="flex w-full h-full overflow-x-auto snap-x snap-mandatory"
+                        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
+                        onScroll={(e) => {
+                          const idx = Math.round(e.currentTarget.scrollLeft / e.currentTarget.offsetWidth)
+                          setProductImageIndexes(prev => ({ ...prev, [product.id]: idx }))
+                        }}
+                      >
+                        {productImages.map((img, i) => (
+                          <img
+                            key={i}
+                            src={img}
+                            alt={product.name}
+                            className="w-full h-full object-cover flex-shrink-0 snap-center"
+                          />
+                        ))}
+                      </div>
+
                       {productImages.length > 1 && (
-                        <>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setProductImageIndexes(prev => ({
-                                ...prev,
-                                [product.id]: (prev[product.id] || 0) === 0 ? productImages.length - 1 : (prev[product.id] || 0) - 1
-                              }))
-                            }}
-                            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 p-1 rounded-full hover:bg-black/70 transition"
-                          >
-                            <ChevronLeft size={16} className="text-white" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setProductImageIndexes(prev => ({
-                                ...prev,
-                                [product.id]: (prev[product.id] || 0) === productImages.length - 1 ? 0 : (prev[product.id] || 0) + 1
-                              }))
-                            }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 p-1 rounded-full hover:bg-black/70 transition"
-                          >
-                            <ChevronRight size={16} className="text-white" />
-                          </button>
-                          
-                          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-                            {productImages.map((_, i) => (
-                              <div
-                                key={i}
-                                className={`w-1.5 h-1.5 rounded-full ${i === currentImageIndex ? 'bg-white' : 'bg-white/40'}`}
-                              />
-                            ))}
-                          </div>
-                        </>
+                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 pointer-events-none">
+                          {productImages.map((_, i) => (
+                            <div
+                              key={i}
+                              className={`w-1.5 h-1.5 rounded-full transition-colors ${i === currentImageIndex ? 'bg-white' : 'bg-white/40'}`}
+                            />
+                          ))}
+                        </div>
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-street-accent uppercase tracking-wider">
-                        {product.category}
-                      </span>
-                      {product.brand && (
-                        <span className="text-[10px] text-gray-500 font-medium">{product.brand}</span>
-                      )}
-                    </div>
+                    {product.brand && (
+                      <p className="text-[10px] text-gray-500 font-medium mb-0.5">{product.brand}</p>
+                    )}
 
-                    <h3 className="font-bold text-sm text-white mt-1 line-clamp-2 min-h-[2.5rem]">
+                    <h3 className="font-bold text-sm text-white line-clamp-2">
                       {product.name}
                     </h3>
 
-                    <p className="text-xs text-gray-400 line-clamp-2 mt-2 h-8">
+                    <p className="text-xs text-gray-400 line-clamp-1 mt-1">
                       {product.description}
                     </p>
 
-                    <div className="mt-4 flex items-center justify-between">
+                    <div className="mt-3 flex items-center justify-between">
                       <div>
                         {product.price === 0 ? (
                           <span className="text-sm font-black text-street-accent uppercase tracking-wide">Don gratuit</span>

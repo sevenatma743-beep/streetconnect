@@ -75,6 +75,7 @@ export default function Profile({
   const [reportReason, setReportReason] = useState('Comportement inapproprié')
   const [reportDetails, setReportDetails] = useState('')
   const [reportStatus, setReportStatus] = useState(null) // null | 'success' | 'duplicate' | 'error'
+  const [msgError, setMsgError] = useState(null)
 
   const isMyProfile = useMemo(() => user?.id && profile?.id && user.id === profile.id, [user, profile])
 
@@ -278,16 +279,21 @@ export default function Profile({
   async function handleMessage() {
     if (!isMutualFollow || !profile?.id) return
 
+    setMsgError(null)
     const { data, error } = await supabase.rpc('create_or_get_dm', {
       other_user_id: profile.id
     })
     if (error) {
       console.error('create_or_get_dm error:', error)
+      setMsgError('Impossible d\'ouvrir la conversation')
       return
     }
 
     const conversationId = typeof data === 'string' ? data : data?.conversation_id
-    if (!conversationId) return
+    if (!conversationId) {
+      setMsgError('Impossible d\'ouvrir la conversation')
+      return
+    }
 
     // ✅ Si tu veux rester en SPA (inbox) plutôt qu'une route dédiée :
     if (onOpenConversation) {
@@ -555,6 +561,10 @@ export default function Profile({
                 </button>
               </div>
 
+              {msgError && (
+                <p className="text-red-400 text-xs text-center mt-2">{msgError}</p>
+              )}
+
               {/* Lien de signalement — discret */}
               <button
                 onClick={() => { setShowReportModal(true); setReportStatus(null) }}
@@ -676,8 +686,10 @@ export default function Profile({
                     <video src={post.media_url} className="w-full h-full object-cover" />
                   )
                 ) : (
-                  <div className="flex items-center justify-center h-full text-white text-xs p-2">
-                    {post.caption}
+                  <div className="h-full bg-gradient-to-br from-street-700 to-street-900 flex items-center justify-center p-3">
+                    <p className="text-white text-xs font-semibold leading-snug line-clamp-4 text-center">
+                      {post.caption}
+                    </p>
                   </div>
                 )}
               </div>
