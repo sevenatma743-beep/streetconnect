@@ -10,6 +10,7 @@
         "lint": "next lint"
     },
     "dependencies": {
+        "@sentry/nextjs": "^10.48.0",
         "@supabase/supabase-js": "^2.89.0",
         "leaflet": "^1.9.4",
         "lucide-react": "^0.294.0",
