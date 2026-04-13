@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -9,9 +9,18 @@ export default function Notifications({ onUserClick, onOpenProduct }) {
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [notifications, setNotifications] = useState([])
+  const PAGE_SIZE = 20
+  const [cursor, setCursor] = useState(null)
+  const [hasMore, setHasMore] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const sentinelRef = useRef(null)
 
   useEffect(() => {
-    if (user) loadNotifications()
+    if (user) {
+      setCursor(null)
+      setHasMore(true)
+      loadNotifications(null)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
@@ -51,18 +60,42 @@ export default function Notifications({ onUserClick, onOpenProduct }) {
     }
   }, [user])
 
-  async function loadNotifications() {
-    setLoading(true)
-    const { data, error } = await supabase
+  useEffect(() => {
+    if (!sentinelRef.current) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && hasMore && !loadingMore && !loading) {
+          loadNotifications(cursor)
+        }
+      },
+      { threshold: 0.1 }
+    )
+    observer.observe(sentinelRef.current)
+    return () => observer.disconnect()
+  }, [hasMore, loadingMore, loading, cursor])
+
+  async function loadNotifications(cursor) {
+    cursor ? setLoadingMore(true) : setLoading(true)
+
+    let query = supabase
       .from('notifications')
       .select('id, type, actor_id, post_id, product_id, created_at, is_read')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(30)
+      .order('id', { ascending: false })
+      .limit(PAGE_SIZE)
+
+    if (cursor) {
+      query = query.or(
+        `created_at.lt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.lt.${cursor.id})`
+      )
+    }
+
+    const { data, error } = await query
 
     if (error) {
       console.error('❌ notifications error:', error)
-      setNotifications([])
+      if (!cursor) setNotifications([])
     } else {
       const rows = data || []
       const actorIds = [...new Set(rows.map(n => n.actor_id).filter(Boolean))]
@@ -74,15 +107,30 @@ export default function Notifications({ onUserClick, onOpenProduct }) {
           .in('id', actorIds)
         for (const p of profiles || []) actorMap[p.id] = p
       }
-      setNotifications(rows.map(n => ({ ...n, actor: actorMap[n.actor_id] || null })).filter(n => n.actor !== null))
-    }
-    setLoading(false)
+      const enriched = rows
+        .map(n => ({ ...n, actor: actorMap[n.actor_id] || null }))
+        .filter(n => n.actor !== null)
 
-    await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('user_id', user.id)
-      .eq('is_read', false)
+      cursor
+        ? setNotifications(prev => [...prev, ...enriched])
+        : setNotifications(enriched)
+
+      setHasMore(rows.length === PAGE_SIZE)
+      if (rows.length > 0) {
+        const last = rows[rows.length - 1]
+        setCursor({ created_at: last.created_at, id: last.id })
+      }
+    }
+
+    cursor ? setLoadingMore(false) : setLoading(false)
+
+    if (!cursor) {
+      await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('user_id', user.id)
+        .eq('is_read', false)
+    }
   }
 
   function getNotifText(type, username) {
@@ -179,6 +227,12 @@ export default function Notifications({ onUserClick, onOpenProduct }) {
           })}
         </div>
       )}
+
+      <div ref={sentinelRef} className="flex justify-center py-4">
+        {loadingMore && (
+          <span className="w-4 h-4 border-2 border-street-accent border-t-transparent rounded-full animate-spin" />
+        )}
+      </div>
     </div>
   )
 }

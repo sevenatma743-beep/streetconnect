@@ -38,6 +38,9 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
   const loading = !!feed?.isLoading
   const error = feed?.error || null
   const mutate = feed?.mutate
+  const loadMore = feed?.loadMore
+  const hasMore = !!feed?.hasMore
+  const isLoadingMore = !!feed?.isLoadingMore
 
   // États pour nouveau post
   const [newPostCaption, setNewPostCaption] = useState('')
@@ -141,12 +144,27 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
   // Confirmation suppression inline (postId | null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
+  // Sentinel scroll infini
+  const sentinelRef = useRef(null)
+
+  useEffect(() => {
+    if (!hasMore || isLoadingMore) return
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadMore() },
+      { threshold: 0.1 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasMore, isLoadingMore, loadMore])
+
   // Realtime likes
   useEffect(() => {
     if (!user || !mutate) return
 
     const channel = supabase
-      .channel('feed-posts-likes')
+      .channel('feed-posts-realtime')
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'posts' },
@@ -154,9 +172,30 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
           const { id, likes_count, comments_count } = payload.new || {}
           if (!id) return
           mutate(
-            (prev) => (prev || []).map((p) =>
-              p.id !== id ? p : { ...p, likes_count, comments_count }
+            (prev) => (prev || []).map((page) =>
+              page.map((p) => p.id !== id ? p : { ...p, likes_count, comments_count })
             ),
+            { revalidate: false }
+          )
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'posts' },
+        (payload) => {
+          // Ignorer les propres posts (déjà gérés par safeRevalidate dans handleCreatePost)
+          if (payload.new?.user_id === user?.id) return
+          safeRevalidate()
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'posts' },
+        (payload) => {
+          const deletedId = payload.old?.id
+          if (!deletedId) return
+          mutate(
+            (prev) => (prev || []).map((page) => page.filter((p) => p.id !== deletedId)),
             { revalidate: false }
           )
         }
@@ -205,8 +244,10 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
     if (mutate) {
       mutate(
         (prev) =>
-          (prev || []).map((p) =>
-            p.user_id === postUserId ? { ...p, is_following_author: !isCurrentlyFollowing } : p
+          (prev || []).map((page) =>
+            page.map((p) =>
+              p.user_id === postUserId ? { ...p, is_following_author: !isCurrentlyFollowing } : p
+            )
           ),
         { revalidate: false }
       )
@@ -221,8 +262,10 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
       if (mutate) {
         mutate(
           (prev) =>
-            (prev || []).map((p) =>
-              p.user_id === postUserId ? { ...p, is_following_author: isCurrentlyFollowing } : p
+            (prev || []).map((page) =>
+              page.map((p) =>
+                p.user_id === postUserId ? { ...p, is_following_author: isCurrentlyFollowing } : p
+              )
             ),
           { revalidate: false }
         )
@@ -296,16 +339,18 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
     if (mutate) {
       mutate(
         (prev) =>
-          (prev || []).map((p) => {
-            if (p.id !== postId) return p
-            const current = p.likes_count || 0
-            const nextCount = isLiked ? current - 1 : current + 1
-            return {
-              ...p,
-              likes_count: Math.max(nextCount, 0),
-              user_has_liked: !isLiked
-            }
-          }),
+          (prev || []).map((page) =>
+            page.map((p) => {
+              if (p.id !== postId) return p
+              const current = p.likes_count || 0
+              const nextCount = isLiked ? current - 1 : current + 1
+              return {
+                ...p,
+                likes_count: Math.max(nextCount, 0),
+                user_has_liked: !isLiked
+              }
+            })
+          ),
         { revalidate: false }
       )
     }
@@ -370,10 +415,12 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
       if (mutate) {
         mutate(
           (prev) =>
-            (prev || []).map((p) =>
-              p.id === postId
-                ? { ...p, comments_count: (p.comments_count || 0) + 1 }
-                : p
+            (prev || []).map((page) =>
+              page.map((p) =>
+                p.id === postId
+                  ? { ...p, comments_count: (p.comments_count || 0) + 1 }
+                  : p
+              )
             ),
           { revalidate: false }
         )
@@ -394,7 +441,7 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
 
     // optimistic remove
     if (mutate) {
-      mutate((prev) => (prev || []).filter((p) => p.id !== postId), { revalidate: false })
+      mutate((prev) => (prev || []).map((page) => page.filter((p) => p.id !== postId)), { revalidate: false })
     }
 
     try {
@@ -430,10 +477,12 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
       if (mutate) {
         mutate(
           (prev) =>
-            (prev || []).map((p) =>
-              p.id === postId
-                ? { ...p, comments_count: Math.max((p.comments_count || 0) - 1, 0) }
-                : p
+            (prev || []).map((page) =>
+              page.map((p) =>
+                p.id === postId
+                  ? { ...p, comments_count: Math.max((p.comments_count || 0) - 1, 0) }
+                  : p
+              )
             ),
           { revalidate: false }
         )
@@ -450,7 +499,7 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
   if (loading && posts.length === 0) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="text-white">Chargement...</div>
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-street-accent" />
       </div>
     )
   }
@@ -681,7 +730,8 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
           Aucun post pour le moment
         </div>
       ) : (
-        posts.map((post) => (
+        <>
+        {posts.map((post) => (
           <div key={post.id} className="bg-street-900 overflow-hidden">
             {/* Header */}
             <div className="p-4 flex items-center justify-between">
@@ -945,7 +995,13 @@ export default function Feed({ onUserClick, feed, externalOpenComposer, onCompos
               </div>
             )}
           </div>
-        ))
+        ))}
+        <div ref={sentinelRef} className="flex justify-center py-6 h-16">
+          {isLoadingMore && (
+            <div className="w-5 h-5 rounded-full border-2 border-street-700 border-t-street-accent animate-spin" />
+          )}
+        </div>
+        </>
       )}
     </div>
   )
