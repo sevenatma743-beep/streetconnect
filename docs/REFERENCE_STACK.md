@@ -117,3 +117,126 @@
 **Realtime**
 - Vérifier dans Dashboard → Realtime → Inspector si les events arrivent bien
 - Un event qui n'arrive pas = vérifier : publication `supabase_realtime`, policy SELECT, `REPLICA IDENTITY`
+
+---
+
+## 9. Pagination — cursor-based (obligatoire avant go-live)
+
+**Pourquoi cursor-based et pas offset ?**
+- `LIMIT 20 OFFSET 400` : PostgreSQL scanne les 400 premières lignes à ignorer — dégradation linéaire
+- Cursor (`WHERE (created_at, id) < (cursor_created_at, cursor_id)`) : reprise directe, O(log n) avec index
+
+**Requête type :**
+```sql
+-- Page initiale
+SELECT * FROM posts ORDER BY created_at DESC, id DESC LIMIT 20;
+
+-- Pages suivantes
+SELECT * FROM posts
+WHERE (created_at, id) < (:last_created_at, :last_id)
+ORDER BY created_at DESC, id DESC LIMIT 20;
+```
+
+**Pattern SWR avec `useSWRInfinite` :**
+```js
+const getKey = (pageIndex, previousPageData) => {
+  if (previousPageData && !previousPageData.length) return null; // fin
+  if (pageIndex === 0) return ['feed', null];
+  const last = previousPageData.at(-1);
+  return ['feed', { created_at: last.created_at, id: last.id }];
+};
+const { data, size, setSize } = useSWRInfinite(getKey, fetchPage);
+const allPosts = data ? data.flat() : [];
+```
+
+**Listes à paginer impérativement :** Feed, Notifications, Shop/produits, Historique messages.
+
+---
+
+## 10. Performance DB — indexes et requêtes
+
+**Détecter les requêtes lentes :**
+```sql
+-- Nécessite pg_stat_statements (activé dans Supabase)
+SELECT query, calls, mean_exec_time, total_exec_time
+FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 20;
+```
+
+**Détecter les tables sans index pertinent :**
+```sql
+SELECT relname, seq_scan, idx_scan
+FROM pg_stat_user_tables ORDER BY seq_scan DESC;
+-- seq_scan élevé = requêtes qui ne profitent pas d'un index
+```
+
+**EXPLAIN ANALYZE sur une requête chaude :**
+```sql
+EXPLAIN ANALYZE SELECT * FROM posts
+WHERE (created_at, id) < ('2026-04-10', 'uuid')
+ORDER BY created_at DESC, id DESC LIMIT 20;
+-- Chercher "Index Scan" plutôt que "Seq Scan"
+```
+
+**Règles :**
+- Index composite `(created_at DESC, id DESC)` requis sur toute table paginée par date
+- Index sur `user_id` requis sur toute table filtrée par utilisateur
+- Index partiel (`WHERE is_read = false`) pour les comptages de non-lus
+- Ne pas indexer des colonnes rarement filtrées — les indexes ralentissent les INSERT
+
+---
+
+## 11. Monitoring et error tracking
+
+**Sentry — installation Next.js :**
+```bash
+npx @sentry/wizard@latest -i nextjs
+```
+- Configure automatiquement `sentry.client.config.js`, `sentry.server.config.js`
+- Ajouter `NEXT_PUBLIC_SENTRY_DSN` et `SENTRY_AUTH_TOKEN` dans Vercel
+- `tracesSampleRate: 0.1` — 10% des transactions pour ne pas saturer le quota
+
+**Règles logs :**
+- Aucun `console.log` en production — utiliser `process.env.NODE_ENV === 'development'` pour les logs de dev
+- Les erreurs Supabase sont dans `{ data, error }` — toujours lire `error.message` + `error.code`
+- Sentry capture les erreurs non gérées automatiquement — ne pas dupliquer avec des `try/catch` vides
+
+**Monitoring Supabase :**
+- Dashboard → Reports → Database : connexions actives, query performance
+- Alerte sur connexions > 400 (Pro) et DB size > 400 MB
+
+---
+
+## 12. PWA — App Store readiness
+
+**Manifest minimal (`public/manifest.json`) :**
+```json
+{
+  "name": "StreetConnect",
+  "short_name": "StreetConnect",
+  "description": "Le réseau social street workout",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
+```
+
+**Meta tags `<head>` (dans `app/layout.js`) :**
+```html
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="StreetConnect">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="manifest" href="/manifest.json">
+```
+
+**Critères d'installabilité :**
+- HTTPS (Vercel gère ça automatiquement)
+- `manifest.json` valide avec icônes
+- Service worker enregistré (Next.js 14 : utiliser `next-pwa` ou implémentation manuelle)
+
+**Limites PWA sur iOS :** pas de push notifications natives, pas d'accès à certains capteurs. Pour les notifications push, il faut une app native (React Native/Expo).
