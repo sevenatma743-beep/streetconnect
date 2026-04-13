@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ShoppingCart, Heart, ChevronDown, X, ExternalLink, Filter } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -53,12 +53,33 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
   const [reportStatus, setReportStatus] = useState(null) // null | 'success' | 'duplicate' | 'error'
   const [favErrors, setFavErrors] = useState({})
   const [marketplaceLoadError, setMarketplaceLoadError] = useState(false)
+  const PAGE_SIZE = 20
+  const [cursor, setCursor] = useState(null)
+  const [hasMore, setHasMore] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const sentinelRef = useRef(null)
 
   useEffect(() => {
     if (CURATION_ENABLED) loadCuratedProducts()
-    loadMarketplaceProducts()
+    setCursor(null)
+    setHasMore(true)
+    loadMarketplaceProducts(null)
     if (user) loadFavorites()
   }, [user])
+
+  useEffect(() => {
+    if (!sentinelRef.current) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && hasMore && !loadingMore && !loading) {
+          loadMarketplaceProducts(cursor)
+        }
+      },
+      { threshold: 0.1 }
+    )
+    observer.observe(sentinelRef.current)
+    return () => observer.disconnect()
+  }, [hasMore, loadingMore, loading, cursor])
 
   useEffect(() => {
     if (!initialProductId) return
@@ -101,23 +122,42 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
 
   // ===== MARKETPLACE (P2P) =====
   
-  async function loadMarketplaceProducts() {
+  async function loadMarketplaceProducts(cursor) {
     setMarketplaceLoadError(false)
+    cursor ? setLoadingMore(true) : setLoading(true)
     try {
-      setLoading(true)
-      const { data, error } = await supabase
+      let query = supabase
         .from('products')
         .select('*, profiles:user_id(id, username, avatar_url)')
-        .not('user_id', 'is', null) // Produits avec user_id = marketplace
+        .not('user_id', 'is', null)
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(PAGE_SIZE)
 
+      if (cursor) {
+        query = query.or(
+          `created_at.lt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.lt.${cursor.id})`
+        )
+      }
+
+      const { data, error } = await query
       if (error) throw error
-      setMarketplaceProducts(data || [])
+
+      const rows = data || []
+      cursor
+        ? setMarketplaceProducts(prev => [...prev, ...rows])
+        : setMarketplaceProducts(rows)
+
+      setHasMore(rows.length === PAGE_SIZE)
+      if (rows.length > 0) {
+        const last = rows[rows.length - 1]
+        setCursor({ created_at: last.created_at, id: last.id })
+      }
     } catch (e) {
       console.error('Erreur chargement marketplace:', e)
       setMarketplaceLoadError(true)
     } finally {
-      setLoading(false)
+      cursor ? setLoadingMore(false) : setLoading(false)
     }
   }
 
@@ -675,7 +715,7 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
                 <div className="flex items-center justify-between">
                   <div className="text-2xl font-black">
                     {selectedMarketplaceProduct.price === 0
-                      ? <span className="text-street-accent">Don gratuit</span>
+                      ? <span className="text-street-accent">Don</span>
                       : <span className="text-white">{selectedMarketplaceProduct.price.toFixed(2)}€</span>
                     }
                   </div>
@@ -948,7 +988,7 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
           <div className="text-center py-12">
             <p className="text-gray-500 mb-2">Impossible de charger les annonces</p>
             <button
-              onClick={loadMarketplaceProducts}
+              onClick={() => loadMarketplaceProducts(null)}
               className="text-street-accent hover:underline text-sm"
             >
               Réessayer
@@ -1153,7 +1193,7 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
                     <div className="mt-3 flex items-center justify-between">
                       <div>
                         {product.price === 0 ? (
-                          <span className="text-sm font-black text-street-accent uppercase tracking-wide">Don gratuit</span>
+                          <span className="text-sm font-black text-street-accent uppercase tracking-wide">Don</span>
                         ) : (
                           <span className="text-lg font-black text-white">{product.price.toFixed(2)}€</span>
                         )}
@@ -1194,6 +1234,11 @@ export default function Shop({ onUserClick, onContactSeller, initialProductId, o
                 )
               }
             })}
+          </div>
+          <div ref={sentinelRef} className="flex justify-center py-4">
+            {loadingMore && (
+              <span className="w-4 h-4 border-2 border-street-accent border-t-transparent rounded-full animate-spin" />
+            )}
           </div>
           </>
         )}
