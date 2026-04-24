@@ -97,7 +97,7 @@ export default function Layout({
       )}
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto" style={{ paddingBottom: mainPaddingBottom }}>
+      <main className="flex-1 overflow-y-auto no-scrollbar" style={{ paddingBottom: mainPaddingBottom }}>
         {children}
       </main>
 
